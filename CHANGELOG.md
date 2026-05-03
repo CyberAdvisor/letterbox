@@ -384,6 +384,31 @@ section explaining that vault files must not be copied to
 iCloud Drive, cloud storage, or email. The threat is addressed
 through documentation rather than unreliable runtime detection.
 
+## 1.2.6 — Installation and README Overhaul — 3 May 2026
+
+DOCUMENTATION — no code changes.
+
+**INSTALL.md rewritten:**
+- Added Quick Start section listing the three prerequisites
+- Added Posteo account setup instructions (account creation,
+  app password generation)
+- Added iCloud Drive enablement step for Pythonista
+- Corrected install steps to reflect actual iPad workflow:
+  Files app, iCloud Drive → Pythonista 3 folder, create
+  letterbox subfolder, copy extracted files into it
+- Added Step 7: confirm both parties ready, vault IDs match,
+  same version running
+- Fixed "four words" -> "six-word transfer passphrase"
+- Fixed vault size reference (~39MB -> ~5MB)
+- Expanded troubleshooting section
+
+**README.md updated:**
+- Added "What You Need to Get Started" section at the top:
+  two iPads, Pythonista 3, one shared Posteo account,
+  ability to speak to contact in person or by video call
+- Clarified Mac is for development/testing only, not production
+- Minor wording improvements throughout
+
 ## Responsible Disclosure Hall of Fame
 
 No disclosures yet.

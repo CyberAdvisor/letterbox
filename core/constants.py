@@ -30,6 +30,7 @@
 # 2026-05-03  M.Lines   v1.2.3: APP_VERSION updated to 1.2.3
 # 2026-05-03  M.Lines   v1.2.4: APP_VERSION updated to 1.2.4
 # 2026-05-03  M.Lines   v1.2.5: APP_VERSION updated to 1.2.5
+# 2026-05-03  M.Lines   v1.2.6: APP_VERSION updated to 1.2.6
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -153,7 +154,7 @@ KDF_KEY_SIZE            = 32       # 256-bit key
 # failed attempt tracking. No sensitive data.
 # ---------------------------------------------------------------------------
 
-APP_VERSION             = '1.2.5'
+APP_VERSION             = '1.2.6'
 CONFIG_VERSION          = 1
 CONFIG_SALT_SIZE        = VAULT_SALT_SIZE
 MAX_PASSPHRASE_ATTEMPTS = 10

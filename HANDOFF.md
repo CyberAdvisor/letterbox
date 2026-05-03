@@ -18,12 +18,13 @@ Extract the zip and read in this order:
 2. TECHNICAL_OVERVIEW.md -- how the code works at file level
 3. CHANGELOG.md       -- what has been built and what is known
 
-## Current State — v1.2.5
+## Current State — v1.2.6
 
 The application works end to end on Mac (two terminals simulating
 Alice and Bob) and is ready for iPad testing. All known bugs have
 been fixed. The codebase is clean and fully tested.
 
+v1.2.6 INSTALL.md and README.md overhaul for new users.
 v1.2.5 remove unreliable iCloud detection; add vault storage threat model.
 v1.2.4 stamps/pads terminology documented in DESIGN and TECHNICAL_OVERVIEW.
 v1.2.3 user-facing 'pads' renamed to 'stamps' in UI.
