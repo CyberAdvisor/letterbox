@@ -384,6 +384,23 @@ section explaining that vault files must not be copied to
 iCloud Drive, cloud storage, or email. The threat is addressed
 through documentation rather than unreliable runtime detection.
 
+## 1.2.8 — Threat Model Pad Erasure Correction — 3 May 2026
+
+DOCUMENTATION — no code changes.
+
+**THREAT_MODEL.md correction:**
+The "Post-Session Device Forensics (Ephemeral Mode Only)" section
+incorrectly implied that pad key material is overwritten with random
+data only in ephemeral mode, and only after the "Ready to delete?"
+confirmation. This is wrong. Pad erasure is unconditional — it
+occurs in both standard and ephemeral modes, on both send and
+receive, immediately after use. DESIGN.md and TECHNICAL_OVERVIEW.md
+already described this correctly.
+
+Corrected to: state clearly that pad key material is always
+overwritten with random data after use in both modes, then describe
+what ephemeral mode adds on top of that (no history database write).
+
 ## 1.2.7 — Threat Model Transport Corrections — 3 May 2026
 
 DOCUMENTATION — no code changes.

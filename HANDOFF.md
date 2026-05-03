@@ -18,12 +18,13 @@ Extract the zip and read in this order:
 2. TECHNICAL_OVERVIEW.md -- how the code works at file level
 3. CHANGELOG.md       -- what has been built and what is known
 
-## Current State — v1.2.7
+## Current State — v1.2.8
 
 The application works end to end on Mac (two terminals simulating
 Alice and Bob) and is ready for iPad testing. All known bugs have
 been fixed. The codebase is clean and fully tested.
 
+v1.2.8 THREAT_MODEL.md pad erasure correction (erasure is always unconditional).
 v1.2.7 THREAT_MODEL.md transport corrections (iCloud → Posteo IMAP).
 v1.2.6 INSTALL.md and README.md overhaul for new users.
 v1.2.5 remove unreliable iCloud detection; add vault storage threat model.

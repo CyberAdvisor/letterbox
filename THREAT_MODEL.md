@@ -63,20 +63,26 @@ secure in 50 years.
 
 ### Post-Session Device Forensics (Ephemeral Mode Only)
 
-When ephemeral mode is enabled, messages 
+Pad key material is always overwritten 
+with random data after use, in both 
+standard and ephemeral modes. A used pad 
+slot contains random bytes, not the 
+original key material.
+
+Ephemeral mode goes further: messages 
 are never written to the history database. 
 After a "Ready to delete?" confirmation, 
-the pad key material used for that message 
-is overwritten with random data.
+the message is discarded without being 
+written to disk.
 
 An adversary who obtains the device after 
-a session and knows or compels the 
-passphrase finds:
+a session in ephemeral mode and knows or 
+compels the passphrase finds:
 - No message history
 - No recoverable pad material for 
   messages already deleted
 - Only the vault file with used slots 
-  randomised
+  containing random data
 
 This protection applies only to messages 
 that have been deleted. Messages kept 
