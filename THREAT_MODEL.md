@@ -24,18 +24,17 @@ regardless of computing resources.
 ### Content Interception in Transit
 
 Messages travel as encrypted blobs via 
-iCloud Drive shared folders. An attacker 
-who intercepts this traffic sees 
-random-looking data they cannot decrypt. 
-This includes your internet provider, 
-Apple, governments requesting data from 
-Apple, and anyone monitoring network traffic.
+IMAP to a shared Posteo account used as 
+a dead drop. An attacker who intercepts 
+this traffic sees random-looking data 
+they cannot decrypt. This includes your 
+internet provider, Posteo, governments 
+requesting data from Posteo, and anyone 
+monitoring network traffic.
 
-With iCloud Advanced Data Protection 
-enabled, Apple cannot decrypt the files 
-even in response to a legal request. 
-The content is protected by both iCloud's 
-end-to-end encryption and your one-time-pad 
+The connection to Posteo uses TLS. 
+The content is protected by both the 
+TLS transport layer and your one-time-pad 
 encryption independently.
 
 ### Bulk Passive Surveillance
@@ -46,10 +45,11 @@ cannot extract meaning from the traffic.
 
 ### Platform Data Breaches
 
-If iCloud is breached, attackers obtain 
+If Posteo is breached, attackers obtain 
 encrypted blobs they cannot read without 
 your vault. The vault lives only on 
-your device.
+your device. Posteo holds no key 
+material and cannot decrypt messages.
 
 ### Future Computing Advances
 
@@ -147,10 +147,10 @@ at you personally.
 
 ### Communication Metadata
 
-iCloud knows that two Apple IDs share 
-a folder and that files are created and 
-deleted in it. A sophisticated observer 
-can infer:
+Posteo knows that a shared account is 
+accessed from two locations and that 
+messages are created and deleted in it. 
+A sophisticated observer can infer:
 
 - That two people are in communication
 - Approximately how often they communicate
@@ -174,19 +174,22 @@ face and voice you know well. Do not
 exchange vaults with people you cannot 
 positively identify.
 
-### iCloud Account Compromise
+### Posteo Account Compromise
 
-If your Apple ID is compromised, an 
-attacker can access your shared folders. 
-They receive encrypted files they cannot 
-read without your vault. However they 
-can delete incoming messages before 
-you collect them, creating gaps in 
-your correspondence.
+If the shared Posteo account credentials 
+are compromised, an attacker can access 
+the message dead drop. They receive 
+encrypted files they cannot read without 
+your vault. However they can delete 
+incoming messages before you collect 
+them, creating gaps in your 
+correspondence.
 
-Protect your Apple ID with a strong 
-password and two-factor authentication. 
-Enable Advanced Data Protection.
+Protect the Posteo app password. Use a 
+strong unique password for the Posteo 
+account itself and enable two-factor 
+authentication on the Posteo account 
+if available.
 
 ### Vault Files Outside the Device
 

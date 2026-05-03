@@ -384,6 +384,39 @@ section explaining that vault files must not be copied to
 iCloud Drive, cloud storage, or email. The threat is addressed
 through documentation rather than unreliable runtime detection.
 
+## 1.2.7 — Threat Model Transport Corrections — 3 May 2026
+
+DOCUMENTATION — no code changes.
+
+**THREAT_MODEL.md corrections:**
+Four sections contained stale references to iCloud Drive shared
+folders as the message transport mechanism. The transport has
+always been Posteo IMAP. The documentation did not match the
+implementation.
+
+Sections corrected:
+
+- "Content Interception in Transit": rewritten to describe IMAP
+  dead drop via Posteo over TLS. Removed incorrect references to
+  iCloud Advanced Data Protection as a message transport layer.
+- "Platform Data Breaches": updated from "iCloud is breached" to
+  "Posteo is breached". Added note that Posteo holds no key
+  material.
+- "Communication Metadata": updated from iCloud/Apple ID framing
+  to Posteo account access framing.
+- "iCloud Account Compromise": renamed to "Posteo Account
+  Compromise" and rewritten to describe the actual threat
+  (shared Posteo credentials compromised) and correct mitigations.
+
+The iCloud references that remain in THREAT_MODEL.md are correct:
+they describe vault file storage (not message transport) and the
+recommendation to not back vault files up to iCloud Drive.
+
+No other documentation files required changes. DESIGN.md's iCloud
+Drive reference is in the "rejected alternatives" section and is
+accurate. INSTALL.md's iCloud references describe script file
+storage and ADP setup, both of which are correct.
+
 ## 1.2.6 — Installation and README Overhaul — 3 May 2026
 
 DOCUMENTATION — no code changes.

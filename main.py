@@ -1,6 +1,6 @@
 # main.py
 #
-# Letterbox v1.2.6 -- Proof of Concept
+# Letterbox v1.2.7 -- Proof of Concept
 # Entry point and complete CLI user interface.
 #
 # Usage:
@@ -51,6 +51,7 @@
 # 2026-05-03  M.Lines   v1.2.4: No code change -- docs only
 # 2026-05-03  M.Lines   v1.2.5: Remove _is_icloud_path and iCloud detection code
 # 2026-05-03  M.Lines   v1.2.6: No code change -- docs only
+# 2026-05-03  M.Lines   v1.2.7: No code change -- THREAT_MODEL.md transport corrections
 # ---------------------------------------------------------------------------
 
 import hashlib
