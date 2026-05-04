@@ -4,14 +4,19 @@
 
 ## Quick Start
 
-You need three things before you begin:
+You need the following before you begin:
 
 1. **An iPad** with Pythonista 3 installed
 2. **A shared Posteo email account** that
    both you and your contact can access
+   (required for sending and receiving
+   messages; also used for vault exchange
+   unless you use the file transfer option)
 3. **A contact** who also has an iPad with
-   Pythonista 3, and who you can speak to
-   in person or by video call
+   Pythonista 3
+4. **A way to provide your contact with
+   the transfer phrase** — in person,
+   by video call, or any channel you trust
 
 If you are missing any of these, read the
 relevant section below before proceeding.
@@ -199,15 +204,14 @@ On first run the app will:
 1. Display the version number
 2. Show a disclaimer — read it, then
    type AGREE to continue
-3. Ask whether you are generating
-   or importing a vault
+3. Ask your role: Generate vault (you
+   go first) or Import vault (your
+   contact went first)
+4. Ask your transfer method: Posteo
+   (upload/download) or File (AirDrop
+   or Files app)
 
-You are generating if you are Alice
-(the first party to set up).
-You are importing if you are Bob
-(receiving the vault Alice generated).
-
-Decide who is Alice and who is Bob
+Decide who generates and who imports
 before you begin. It does not matter
 which role each person takes.
 
@@ -218,90 +222,131 @@ which role each person takes.
 One person (Alice) generates the vault
 and the other (Bob) imports it. Both must
 complete this step before either can send
-a message.
+a message. There are two ways to transfer
+the vault: via Posteo, or via file.
 
-### Before You Begin
+### Choosing a Transfer Method
 
-Have the following ready:
+**Posteo transfer** — Alice uploads the
+encrypted vault to your shared Posteo
+account. Bob downloads it from there.
+Requires Posteo credentials at setup.
+The vault is encrypted and protected
+by the transfer phrase, but it exists
+on Posteo's servers briefly.
 
-- The shared Posteo account address
-- The Posteo app password
-- A way to speak to your contact
-  (in person or video call)
+**File transfer** — Alice saves the
+encrypted vault to a file and shares
+it directly with Bob via AirDrop or
+the Files app. The vault never touches
+any server. Recommended if either
+party has a serious threat model.
 
-### Alice — Generating the Vault
+Both methods produce the same result.
+The vault is always encrypted with
+2,000,000 KDF iterations and a
+six-word transfer phrase regardless
+of how it travels.
 
-1. Run Letterbox and choose
-   "Generate vault" at the first-run
-   prompt
-2. Choose standard or ephemeral mode
-   (see the Ephemeral Mode section below)
-3. Wait for vault generation
+---
+
+### Alice — Posteo Transfer
+
+1. Run Letterbox
+2. Choose: Generate vault
+3. Choose: Posteo
+4. Choose encryption mode (standard
+   or ephemeral)
+5. Wait for vault generation
    (20–30 seconds)
-4. Choose your personal vault passphrase
-   — write it down and store it somewhere
-   physically safe. There is no recovery
-   option.
-5. Enter the shared Posteo address and
-   app password when prompted
-6. Wait for the vault to upload
+6. Choose your personal passphrase —
+   write it down. No recovery option.
+7. Enter the shared Posteo address
+   and app password
+8. Wait for vault upload (5–10 seconds)
+9. Letterbox displays:
+   - Posteo address
+   - App password
+   - Six-word transfer phrase
+10. Provide all three to Bob
+
+### Bob — Posteo Transfer
+
+1. Run Letterbox
+2. Choose: Import vault
+3. Choose: Posteo
+4. Enter the Posteo address, app
+   password, and transfer phrase
+   your contact provided
+5. Wait for download and decrypt
    (5–10 seconds)
-7. Letterbox displays three things:
-   - The Posteo address
-   - The Posteo app password
-   - A six-word transfer passphrase
-
-8. Confirm you have copied all three,
-   then tell Bob ALL of the following
-   verbally — in person or by video
-   call only. Never by text or email:
-   - The Posteo address
-   - The Posteo app password
-   - The six-word transfer passphrase
-
-### Bob — Importing the Vault
-
-1. Run Letterbox and choose
-   "Import vault" at the first-run
-   prompt
-2. Enter the Posteo address Alice
-   gave you verbally
-3. Enter the Posteo app password
-4. Enter the six-word transfer
-   passphrase
-5. Wait for the vault to download
-   and decrypt (5–10 seconds)
-6. Choose your own personal vault
-   passphrase — different from the
-   transfer passphrase. Write it down.
+6. Choose your own personal passphrase
+   — write it down. No recovery option.
 7. Setup is complete
+
+---
+
+### Alice — File Transfer
+
+1. Run Letterbox
+2. Choose: Generate vault
+3. Choose: File
+4. Choose encryption mode (standard
+   or ephemeral)
+5. Wait for vault generation
+   (20–30 seconds)
+6. Choose your personal passphrase —
+   write it down. No recovery option.
+7. Letterbox saves the transfer vault
+   to the letterbox folder and displays:
+   - The file path
+   - The six-word transfer phrase
+8. Share the vault file with Bob via
+   AirDrop or the Files app
+9. Provide the transfer phrase to Bob
+10. Enter Posteo credentials for
+    ongoing message exchange
+
+### Bob — File Transfer
+
+1. Receive the vault file from Alice
+   (via AirDrop or Files app) and
+   save it to your letterbox folder
+2. Run Letterbox
+3. Choose: Import vault
+4. Choose: File
+5. Enter the file path (or press
+   Enter if the file is in the
+   default location)
+6. Enter the six-word transfer phrase
+7. Wait for decryption
+8. Choose your own personal passphrase
+   — write it down. No recovery option.
+9. Enter Posteo credentials for
+   ongoing message exchange
+10. Setup is complete
+
+---
 
 ### Identity Verification
 
 The person you exchange a vault with
 is the only person you can correspond
 with using that vault. Verify their
-identity before accepting:
-
-- In person is strongest
-- Video call is adequate for people
-  whose face and voice you know well
-- Voice call only is adequate for
-  people whose voice you can identify
-  with certainty
+identity before accepting.
 
 Do not exchange vaults with anyone you
 cannot positively identify.
 
-### What Must Travel by Voice Only
+### Protecting the Transfer Phrase
 
-The six-word transfer passphrase must
-never be written down or sent digitally.
-Speak it only.
-
-The Posteo address and app password are
-also sensitive. Do not send them by
-text or email.
+The six-word transfer phrase must be
+provided securely. Do not send it by
+unencrypted text or email. In-person
+or video call is strongest. The phrase
+protects the vault file with 2,000,000
+KDF iterations — it is hard to crack
+but should not be exposed unnecessarily.
 
 ---
 

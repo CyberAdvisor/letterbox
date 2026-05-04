@@ -18,12 +18,15 @@ Extract the zip and read in this order:
 2. TECHNICAL_OVERVIEW.md -- how the code works at file level
 3. CHANGELOG.md       -- what has been built and what is known
 
-## Current State — v1.2.8
+## Current State — v2.0
 
 The application works end to end on Mac (two terminals simulating
 Alice and Bob) and is ready for iPad testing. All known bugs have
 been fixed. The codebase is clean and fully tested.
 
+v2.0    Physical vault transfer (file/AirDrop); setup UI overhaul; APP_VERSION bumped to 2.0.
+v1.2.10 Test suite: chi-squared entropy test, rollback tests 13.9-13.11, ephemeral replay tests 8.6-8.7.
+v1.2.9 Three security fixes: rollback detection enforced, ephemeral replay false positive, warning level bug.
 v1.2.8 THREAT_MODEL.md pad erasure correction (erasure is always unconditional).
 v1.2.7 THREAT_MODEL.md transport corrections (iCloud → Posteo IMAP).
 v1.2.6 INSTALL.md and README.md overhaul for new users.

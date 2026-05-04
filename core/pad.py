@@ -28,6 +28,7 @@
 # ---------------------------------------------------------------------------
 # 2026-05-02  M.Lines   Initial version
 # 2026-05-03  M.Lines   v1.2.3: PAD_WARNING_LEVELS messages use 'stamps' not 'pads'
+# 2026-05-03  M.Lines   v1.2.9: PAD_WARNING_LEVELS reversed -- most severe first
 # ---------------------------------------------------------------------------
 
 from core.constants import PAD_COUNT, PAD_SIZE
@@ -170,7 +171,19 @@ def lookup_receive_pad(
         err.is_duplicate = True
         raise err
 
-    # Pad used but not in history -- serious problem
+    # Pad used but not in history.
+    # In ephemeral mode history is never written, so a used pad with
+    # no history record is expected on duplicate delivery -- not a replay.
+    if vault.ephemeral:
+        err = PadAlreadyUsedError(
+            f"Pad {pad_id} already used (ephemeral mode -- no history). "
+            "Duplicate delivery -- message discarded."
+        )
+        err.is_duplicate = True
+        raise err
+
+    # Standard mode: used pad not in history is a genuine anomaly --
+    # possible replay attack or vault corruption.
     err = PadReplayError(
         f"Pad {pad_id} is marked used but the message is not in history.\n"
         "This may indicate a replay attack or vault corruption.\n"
@@ -210,11 +223,11 @@ def confirm_pad_used(
 # The UI checks remaining_send_pads() against these thresholds
 # and shows appropriate warnings.
 PAD_WARNING_LEVELS = [
-    (500, "Under 500 stamps remaining. Plan a new vault exchange soon."),
-    (200, "Under 200 stamps remaining. A new vault exchange is needed."),
-    (100, "Under 100 stamps remaining. Exchange a new vault urgently."),
-    ( 50, "Under 50 stamps remaining. Send a message to arrange exchange."),
     ( 10, "CRITICAL: Under 10 stamps remaining."),
+    ( 50, "Under 50 stamps remaining. Send a message to arrange exchange."),
+    (100, "Under 100 stamps remaining. Exchange a new vault urgently."),
+    (200, "Under 200 stamps remaining. A new vault exchange is needed."),
+    (500, "Under 500 stamps remaining. Plan a new vault exchange soon."),
 ]
 
 
