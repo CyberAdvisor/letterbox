@@ -39,16 +39,14 @@ their specific situation.
 - Pythonista 3 on each iPad (~$10, App Store)
 - One shared Posteo email account
   (https://posteo.de, ~€1/month)
-- A way to provide your contact with
-  the six-word transfer phrase
+- The ability to speak to your contact
+  in person or by video call
 
 That is the complete list. No other
 accounts, services, or subscriptions
-are required. The vault exchange can
-be done via Posteo or via direct file
-transfer (AirDrop). After setup,
-Letterbox uses only the shared Posteo
-account for ongoing correspondence.
+are required. After the initial vault
+exchange, Letterbox uses only the
+shared Posteo account.
 
 See INSTALL.md for step-by-step setup.
 
@@ -214,12 +212,11 @@ There are no black boxes.
 
 **You need minimal metadata linking
 you to your correspondent.**
-After the vault exchange, this application
-creates only the metadata that two accounts
-accessed a shared Posteo folder. Nothing
-links the message contents to either party.
-With file-based vault transfer, the exchange
-itself leaves no server metadata at all.
+After the initial vault exchange via
+Posteo, this application creates only
+the metadata that two accounts accessed
+a shared Posteo folder. Nothing links
+the message contents to either party.
 In ephemeral mode, no message content
 is ever written to disk on either device.
 

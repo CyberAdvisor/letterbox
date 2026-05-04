@@ -769,45 +769,30 @@ generate_transfer_passphrase() in util/random.py generates 6 words
 instead of 4.
 
 
-### Physical Vault Transfer (implemented v2.0)
+### Physical Vault Transfer (deferred to v2)
 
-**Decision:** Both Posteo and file-based vault transfer are supported.
-During setup Alice and Bob each choose their transfer method
-independently at the start of the setup flow.
+**Decision:** Physical vault transfer via AirDrop or USB save-to-file
+was designed but not implemented in v1. The vault exchange currently
+requires Posteo upload.
 
-**Implementation:**
-- Setup screen presents two transfer choices immediately after role
-  selection: Posteo (upload/download over IMAP) or File (AirDrop or
-  Files app).
-- Alice (file path): generates vault, saves encrypted transfer vault
-  to `letterbox_transfer.vault` in the data directory, displays the
-  transfer phrase. She shares the file manually via AirDrop or the
-  Files app and provides the transfer phrase to Bob.
-- Bob (file path): locates the file in his data directory (or enters
-  the path), enters the transfer phrase, and the vault decrypts and
-  re-encrypts with his passphrase. The transfer vault file is deleted
-  after successful import.
-- Posteo credentials for ongoing message exchange are collected as a
-  separate step after vault exchange in all paths. For the Posteo
-  transfer path, Alice's credentials are collected before upload and
-  reused for messaging. For the file transfer path, both parties
-  enter credentials after the vault exchange.
-- The transfer vault file is always encrypted with the 2,000,000-
-  iteration KDF and the 6-word transfer phrase regardless of how it
-  is transmitted. File transfer eliminates the Posteo server exposure
-  window; the encryption protects it regardless.
+**Why deferred:** Triggering AirDrop programmatically from a CLI
+Python script in Pythonista requires the ui module which has been
+deliberately avoided. A save-to-file option is straightforward but
+the complete flow -- save path selection, Bob's import path, Mac
+development testing path -- requires careful design of the setup
+branching logic. Deferred to keep v1 scope contained.
 
-**Security advantage of file transfer:**
-Physical transfer eliminates the Posteo exposure window entirely.
-With Posteo upload, the encrypted vault exists on a third-party
-server between Alice uploading and Bob downloading -- potentially
-hours or longer. With file transfer the vault moves directly between
-devices with no server involvement. This is the preferred path for
-users whose threat model includes well-resourced adversaries with
-access to Posteo infrastructure.
+**Planned v2 implementation:**
+- Third option in setup: Save to file (physical transfer)
+- Alice saves encrypted transfer vault to Documents folder
+- App displays file path and manual AirDrop/USB instructions
+- Bob's import: choose between Posteo download or file import
+- Default paths handle Mac development testing automatically
+- Posteo credentials still required for ongoing message exchange
 
-**AirDrop note:**
-AirDrop is not triggered programmatically. Alice saves the file to
-the Letterbox data directory and then uses the iOS Files app or
-AirDrop manually. This avoids a dependency on Pythonista's ui module
-and keeps the transport layer in plain Python stdlib.
+**Security note:** Physical transfer eliminates the Posteo exposure
+window entirely. Even with the 6-word passphrase and 2,000,000 KDF
+iterations, Posteo upload means the encrypted vault exists on a
+third-party server. Physical transfer via AirDrop or USB means
+the vault moves directly between devices with no server involvement.
+This is the recommended path for users with serious threat models.

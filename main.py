@@ -1,6 +1,6 @@
 # main.py
 #
-# Letterbox v2.0 -- Proof of Concept
+# Letterbox v1.2.8 -- Proof of Concept
 # Entry point and complete CLI user interface.
 #
 # Usage:
@@ -53,18 +53,6 @@
 # 2026-05-03  M.Lines   v1.2.6: No code change -- docs only
 # 2026-05-03  M.Lines   v1.2.7: No code change -- THREAT_MODEL.md transport corrections
 # 2026-05-03  M.Lines   v1.2.8: No code change -- THREAT_MODEL.md pad erasure correction
-# 2026-05-03  M.Lines   v1.2.9: Vault rollback detection enforced in _login()
-# 2026-05-03  M.Lines   v1.2.9: VaultRollbackError: locks app, offers RESET or exit
-# 2026-05-03  M.Lines   v1.2.9: lookup_receive_pad: fix false PadReplayError in ephemeral mode
-# 2026-05-03  M.Lines   v1.2.9: PAD_WARNING_LEVELS reversed: most severe threshold checked first
-# 2026-05-03  M.Lines   v1.2.10: Test suite: statistical pad entropy tests, rollback tests, ephemeral replay test
-# 2026-05-03  M.Lines   v2.0: Physical vault transfer via file (AirDrop/Files app)
-# 2026-05-03  M.Lines   v2.0: _run_setup(): role + transport choice, no step-preview list
-# 2026-05-03  M.Lines   v2.0: _setup_as_alice(): Posteo and File paths, clean UI
-# 2026-05-03  M.Lines   v2.0: _setup_as_bob(): Posteo and File paths, fix 'four words' bug
-# 2026-05-03  M.Lines   v2.0: _setup_message_transport(): shared credential entry helper
-# 2026-05-03  M.Lines   v2.0: _save_transfer_vault_to_file(): write vault to filesystem
-# 2026-05-03  M.Lines   v2.0: _load_transfer_vault_from_file(): read vault from filesystem
 # ---------------------------------------------------------------------------
 
 import hashlib
@@ -112,7 +100,6 @@ from core.exceptions import (
     PassphraseMismatchError,
     VaultNotFoundError,
     VaultPersistError,
-    VaultRollbackError,
     PadExhaustedError,
     PadAlreadyUsedError,
     PadReplayError,
@@ -461,28 +448,13 @@ def _login(data_dir: Path) -> tuple:
         passphrase = _enter_passphrase("Enter passphrase")
 
         try:
+            # TODO: After load_vault succeeds, compare vault internal
+            # sequence against get_vault_sequence(config_path) and raise
+            # VaultRollbackError if the vault sequence is lower than the
+            # stored value. This would detect a vault restored from backup
+            # (which risks pad reuse). The infrastructure exists in
+            # store/config.py but the check is not yet enforced here.
             vault = load_vault(vault_path, passphrase)
-
-            # Rollback detection: config.dat records the highest send
-            # sequence ever committed. After N sends, exactly N send
-            # pads should be marked used in the vault index.
-            # If config.dat records more sends than the vault has used
-            # send pads, the vault has been restored from a backup that
-            # predates those sends -- pad reuse is possible.
-            stored_sequence = get_vault_sequence(config_path)
-            used_send_pads  = sum(
-                1 for i in vault.send_pads if vault.index[i]
-            )
-            if stored_sequence > used_send_pads:
-                raise VaultRollbackError(
-                    f"Vault appears to have been restored from a backup.\n"
-                    f"config.dat records {stored_sequence} messages sent "
-                    f"but the vault index shows only {used_send_pads} "
-                    f"send pads used.\n"
-                    "The vault may be out of sync with what was actually "
-                    "sent. Using it risks reusing pad material.\n"
-                    "The vault is locked."
-                )
 
             previous_failures = record_successful_login(config_path)
 
@@ -523,129 +495,97 @@ def _login(data_dir: Path) -> tuple:
                 f"{'s' if remaining > 1 else ''} remaining."
             )
 
-        except VaultRollbackError:
-            print()
-            print("!" * 52)
-            print("  COMPROMISED VAULT")
-            print("!" * 52)
-            print()
-            print("  The vault appears to have been restored from a")
-            print("  backup. Using it risks reusing pad material,")
-            print("  which would compromise all past and future")
-            print("  correspondence.")
-            print()
-            print("  This vault cannot be used.")
-            print()
-            print("  You must reset and run setup again with your")
-            print("  contact. Both parties need a new vault.")
-            print()
-            print("  Type RESET to delete all data and start over.")
-            print("  Any other input will exit the app.")
-            print()
-            answer = input("  > ").strip()
-            if answer == "RESET":
-                _reset_app(data_dir)
-            sys.exit(1)
-
         except VaultNotFoundError:
             print("\n  Vault file not found. Setup may be incomplete.")
             sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
-# Setup helpers
+# Setup -- Alice
 # ---------------------------------------------------------------------------
 
-def _save_transfer_vault_to_file(
-    vault:           object,
-    transfer_phrase: str,
-    salt:            bytes,
-    data_dir:        Path,
-) -> Path:
-    """
-    Encrypt the vault as a transfer vault and save it to a file
-    the user can share via AirDrop or the Files app.
-
-    On iPad the file is written to the Letterbox data directory
-    (~/Documents/letterbox/). The user then shares it manually
-    using the Files app or AirDrop.
-
-    On Mac (development) the file is written to the data directory
-    for that session.
-
-    Returns the path where the file was saved.
-    """
-    out_path = data_dir / "letterbox_transfer.vault"
-
-    vault.is_transfer = True
-    save_vault(vault, out_path, transfer_phrase, salt)
-    vault.is_transfer = False
-
-    return out_path
-
-
-def _load_transfer_vault_from_file(
-    data_dir: Path,
-) -> tuple:
-    """
-    Prompt for the path to a transfer vault file and return
-    (transfer_vault_bytes, path).
-
-    On iPad the default location is the Letterbox data directory.
-    Accepts any valid path. Validates the file exists and is
-    non-empty before returning.
-
-    Returns (path, vault_bytes).
-    """
-    default = data_dir / "letterbox_transfer.vault"
-
+def _setup_as_alice(data_dir: Path) -> None:
+    """Alice generates the vault and uploads it for Bob."""
+    _print_header("Setup -- Generating Vault")
     print()
-    print("  Enter the path to the transfer vault file.")
-    if default.exists():
-        print(f"  Default: {default}")
-        print("  Press Enter to use the default.")
+    print("  You will:")
+    print("  1. Generate a vault")
+    print("  2. Set your personal passphrase")
+    print("  3. Enter your shared Posteo account details")
+    print("  4. Upload an encrypted copy for your contact")
+    print("  5. Tell your contact the transfer passphrase verbally")
+    print()
+    _press_enter("Press Enter to begin.")
+
+    _print_header("Ephemeral Mode")
+    print()
+    print("  Standard mode: messages are saved to encrypted history.")
+    print()
+    print("  Ephemeral mode: messages are never saved. After reading,")
+    print("  you confirm deletion.")
+    print()
+    print("  Ephemeral mode applies to both parties automatically.")
+    print("  This setting is stored in the vault and cannot be changed")
+    print("  after setup without generating a new vault.")
     print()
 
     while True:
-        raw = input("  Path: ").strip()
-        if not raw and default.exists():
-            path = default
-        elif not raw:
-            print("  No default found. Enter the file path.")
-            continue
-        else:
-            path = Path(raw)
+        mode_choice = input("  Use ephemeral mode? (y/n): ").strip().lower()
+        if mode_choice in ("y", "n"):
+            break
+        print("  Please enter y or n.")
 
-        if not path.exists():
-            print(f"  File not found: {path}")
-            print("  Check the path and try again.")
-            continue
+    ephemeral = (mode_choice == "y")
 
-        vault_bytes = path.read_bytes()
-        if not vault_bytes:
-            print("  File is empty. Check the path and try again.")
-            continue
-
-        return path, vault_bytes
+    if ephemeral:
+        print()
+        print("  Ephemeral mode selected.")
+        print("  No message content will be saved to disk.")
+    else:
+        print()
+        print("  Standard mode selected.")
+        print("  Messages will be saved to encrypted history.")
 
 
-def _setup_message_transport(
-    bundle_id:   int,
-    is_alice:    bool,
-    passphrase:  str,
-    salt:        bytes,
-    data_dir:    Path,
-) -> CredentialsData:
-    """
-    Collect Posteo credentials and save them.
-
-    Called by both Alice and Bob after the vault exchange is
-    complete, regardless of which transfer method was used.
-    Returns the saved CredentialsData.
-    """
-    _print_header("Message Transport")
     print()
-    print("  Enter your shared Posteo account details.")
+    print("  Generating vault...")
+    print("  This may take 20-30 seconds.")
+    print("  Keep the app in the foreground.")
+    print()
+
+    bundle_id       = generate_bundle_id()
+    salt            = generate_salt()
+    vault           = generate_vault(bundle_id, ephemeral=ephemeral)
+    transfer_phrase = generate_transfer_passphrase()
+
+    print("  Vault generated.")
+
+    _print_header("Your Personal Passphrase")
+    print()
+    print("  Choose a strong passphrase to protect your vault.")
+    print("  This passphrase is yours alone -- never share it.")
+    print()
+    print("  IMPORTANT: There is no recovery option.")
+    print("  If you forget this passphrase, your vault and")
+    print("  message history cannot be recovered.")
+    print()
+    print("  Write it down and store it somewhere physically safe.")
+    print()
+
+    passphrase = _enter_passphrase_with_confirm("Choose your passphrase")
+
+    config_path = data_dir / "config.dat"
+    vault_path  = data_dir / "vault.dat"
+
+    create_config(config_path, salt)
+    save_vault(vault, vault_path, passphrase, salt)
+    record_disclaimer_agreed(config_path)
+
+    print("\n  Vault saved.")
+
+    _print_header("Posteo Account Details")
+    print()
+    print("  Enter the details for your shared Posteo account.")
     print("  Use an app password, not your main account password.")
     print()
 
@@ -656,7 +596,7 @@ def _setup_message_transport(
         username     = username,
         password     = password,
         folder       = make_folder_name(bundle_id),
-        is_initiator = is_alice,
+        is_initiator = True,
     )
 
     print("\n  Testing connection...")
@@ -672,162 +612,54 @@ def _setup_message_transport(
     creds_path = data_dir / "credentials.dat"
     save_credentials(creds_path, credentials, passphrase, salt)
 
-    return credentials
+    print("\n  Uploading vault for your contact...")
+    print("  This may take a minute -- the vault is large.")
 
+    tmp_vault_path = data_dir / "transfer_vault.tmp"
+    vault.is_transfer = True
+    save_vault(vault, tmp_vault_path, transfer_phrase, salt)
+    vault.is_transfer = False
 
-# ---------------------------------------------------------------------------
-# Setup -- Alice
-# ---------------------------------------------------------------------------
+    transfer_vault_bytes = tmp_vault_path.read_bytes()
+    tmp_vault_path.unlink()
 
-def _setup_as_alice(data_dir: Path, use_file_transfer: bool) -> tuple:
-    """
-    Alice generates the vault and either uploads it to Posteo
-    or saves it to a file for physical transfer.
-    """
-    # --- Encryption mode ---
-    _print_header("Encryption Mode")
+    try:
+        upload_vault(transfer_vault_bytes, credentials)
+        print("  Vault uploaded.")
+    except Exception as e:
+        print(f"\n  Could not upload vault: {e}")
+        print("  Ask your contact to try importing later.")
+
+    _print_header("Tell Your Contact")
     print()
-    print("  1  Standard   — messages saved to encrypted history")
-    print("  2  Ephemeral  — messages never saved to disk")
+    print("  Tell your contact ALL of the following verbally.")
+    print("  In person or by video call only.")
+    print("  Do not send these details by text or email.")
+    print()
+    print(f"  Posteo address:    {username}")
+    print(f"  App password:      {password}")
+    print(f"  Transfer phrase:   {transfer_phrase}")
+    print()
+    print("  They will need all three to import the vault.")
     print()
 
     while True:
-        mode_choice = input("  > ").strip()
-        if mode_choice == "1":
-            ephemeral = False
+        confirm_copied = input(
+            "  Have you copied these details to pass to your contact? (yes/no): "
+        ).strip().lower()
+        if confirm_copied == "yes":
             break
-        if mode_choice == "2":
-            ephemeral = True
-            break
-        print("  Please enter 1 or 2.")
-
-    # --- Generate vault ---
-    print()
-    print("  Generating vault...")
-    print("  This may take 20-30 seconds.")
-    print("  Keep the app in the foreground.")
-    print()
-
-    bundle_id       = generate_bundle_id()
-    salt            = generate_salt()
-    vault           = generate_vault(bundle_id, ephemeral=ephemeral)
-    transfer_phrase = generate_transfer_passphrase()
-
-    print("  Vault generated.")
-
-    # --- Personal passphrase ---
-    _print_header("Your Passphrase")
-    print()
-    print("  Choose a strong passphrase to protect your vault.")
-    print("  This passphrase is yours alone -- never share it.")
-    print()
-    print("  IMPORTANT: There is no recovery option.")
-    print("  Write it down and store it somewhere physically safe.")
-    print()
-
-    passphrase = _enter_passphrase_with_confirm("Choose your passphrase")
-
-    config_path = data_dir / "config.dat"
-    vault_path  = data_dir / "vault.dat"
-
-    create_config(config_path, salt)
-    save_vault(vault, vault_path, passphrase, salt)
-    record_disclaimer_agreed(config_path)
-
-    print("\n  Vault saved.")
-
-    # --- Vault transfer ---
-    if use_file_transfer:
-        _print_header("Save Transfer Vault")
-        print()
-        print("  Saving encrypted transfer vault to file...")
-        print()
-
-        out_path = _save_transfer_vault_to_file(
-            vault, transfer_phrase, salt, data_dir
-        )
-
-        print(f"  Saved to: {out_path}")
-        print()
-        print("  Share this file with your contact via AirDrop")
-        print("  or the Files app.")
-
-        _print_header("Provide to Your Contact")
-        print()
-        print("  Provide all of the following to your contact:")
-        print()
-        print(f"  Transfer phrase:  {transfer_phrase}")
-        print()
-        print("  Also share the vault file saved above.")
-        print()
-        _press_enter("Press Enter when you have shared the file and provided the passphrase.")
-
-    else:
-        # Posteo transfer -- credentials needed before upload
-        _print_header("Message Transport")
-        print()
-        print("  Enter your shared Posteo account details.")
-        print("  Use an app password, not your main account password.")
-        print()
-
-        username = input("  Posteo address: ").strip()
-        password = input("  App password:   ").strip()
-
-        credentials_for_upload = CredentialsData(
-            username     = username,
-            password     = password,
-            folder       = make_folder_name(bundle_id),
-            is_initiator = True,
-        )
-
-        print("\n  Testing connection...")
-        if not test_connection(credentials_for_upload):
-            print(
-                "\n  Could not connect to Posteo with these credentials.\n"
-                "  Check the address and app password.\n"
-                "  Setup has been saved -- relaunch to retry transport."
-            )
-        else:
-            print("  Connection successful.")
-
-        creds_path = data_dir / "credentials.dat"
-        save_credentials(creds_path, credentials_for_upload, passphrase, salt)
-
-        print("\n  Uploading vault for your contact...")
-        print("  This may take a minute -- the vault is large.")
-
-        tmp_vault_path = data_dir / "transfer_vault.tmp"
-        vault.is_transfer = True
-        save_vault(vault, tmp_vault_path, transfer_phrase, salt)
-        vault.is_transfer = False
-
-        transfer_vault_bytes = tmp_vault_path.read_bytes()
-        tmp_vault_path.unlink()
-
-        try:
-            upload_vault(transfer_vault_bytes, credentials_for_upload)
-            print("  Vault uploaded.")
-        except Exception as e:
-            print(f"\n  Could not upload vault: {e}")
-            print("  Ask your contact to try importing later.")
-
-        _print_header("Provide to Your Contact")
-        print()
-        print("  Provide all of the following to your contact:")
-        print()
-        print(f"  Posteo address:   {username}")
-        print(f"  App password:     {password}")
-        print(f"  Transfer phrase:  {transfer_phrase}")
-        print()
-        _press_enter("Press Enter when you have provided these details.")
+        if confirm_copied == "no":
+            print()
+            print("  Please copy the Posteo address, app password,")
+            print("  and transfer phrase before continuing.")
+            print("  You will not see the transfer phrase again.")
+            print()
 
     _print_header("Setup Complete")
     print()
     print("  You are ready to correspond.")
-    if use_file_transfer:
-        print("  Your contact can import the vault file when ready.")
-    else:
-        print("  Your contact can import the vault when ready.")
+    print("  Your contact can import the vault whenever they are ready.")
     print()
 
     return passphrase, salt, vault
@@ -837,72 +669,58 @@ def _setup_as_alice(data_dir: Path, use_file_transfer: bool) -> tuple:
 # Setup -- Bob
 # ---------------------------------------------------------------------------
 
-def _setup_as_bob(data_dir: Path, use_file_transfer: bool) -> tuple:
-    """
-    Bob imports the vault Alice generated, either by downloading
-    from Posteo or loading from a file.
-    """
+def _setup_as_bob(data_dir: Path) -> None:
+    """Bob downloads and imports the vault Alice uploaded."""
+    _print_header("Setup -- Importing Vault")
+    print()
+    print("  You need three things your contact told you verbally:")
+    print("  - Posteo address")
+    print("  - App password")
+    print("  - Transfer passphrase (four words)")
+    print()
+
+    username        = input("  Posteo address:      ").strip()
+    password        = input("  App password:        ").strip()
+    transfer_phrase = input("  Transfer passphrase: ").strip()
+
     salt = generate_salt()
 
-    if use_file_transfer:
-        _print_header("Import Vault")
-        print()
-        print("  Locate the vault file your contact shared with you.")
-        print("  Save it to your Letterbox folder if not already there.")
-        print()
+    credentials = CredentialsData(
+        username     = username,
+        password     = password,
+        folder       = "Letterbox-Setup",
+        is_initiator = False,
+    )
 
-        path, transfer_vault_bytes = _load_transfer_vault_from_file(data_dir)
-
-        print()
-        transfer_phrase = input("  Transfer phrase: ").strip()
-
-    else:
-        _print_header("Import Vault")
-        print()
-        print("  Enter the details your contact provided.")
-        print()
-
-        username        = input("  Posteo address:  ").strip()
-        password        = input("  App password:    ").strip()
-        transfer_phrase = input("  Transfer phrase: ").strip()
-
-        credentials_for_download = CredentialsData(
-            username     = username,
-            password     = password,
-            folder       = "Letterbox-Setup",
-            is_initiator = False,
+    print("\n  Connecting to Posteo...")
+    if not test_connection(credentials):
+        print(
+            "\n  Could not connect to Posteo with these credentials.\n"
+            "  Check the address and app password and try again."
         )
+        sys.exit(1)
 
-        print("\n  Connecting to Posteo...")
-        if not test_connection(credentials_for_download):
-            print(
-                "\n  Could not connect to Posteo with these credentials.\n"
-                "  Check the address and app password and try again."
-            )
-            sys.exit(1)
+    print("  Connected. Downloading vault...")
+    print("  This may take a minute -- the vault is large.")
 
-        print("  Connected. Downloading vault...")
-        print("  This may take a minute -- the vault is large.")
+    try:
+        transfer_vault_bytes = download_vault(credentials)
+    except Exception as e:
+        print(f"\n  Could not download vault: {e}")
+        sys.exit(1)
 
-        try:
-            transfer_vault_bytes = download_vault(credentials_for_download)
-        except Exception as e:
-            print(f"\n  Could not download vault: {e}")
-            sys.exit(1)
+    print("  Vault downloaded.")
 
-        print("  Vault downloaded.")
-
-    # --- Decrypt transfer vault ---
     tmp_path = data_dir / "transfer_incoming.tmp"
     tmp_path.write_bytes(transfer_vault_bytes)
 
-    print("\n  Decrypting vault...")
+    print("\n  Decrypting vault with transfer passphrase...")
     try:
         vault = load_vault(tmp_path, transfer_phrase, is_transfer=True)
     except WrongPassphraseError:
         print(
-            "\n  Incorrect transfer phrase.\n"
-            "  Check what your contact provided and try again.\n"
+            "\n  Incorrect transfer passphrase.\n"
+            "  Check what your contact told you and try again.\n"
             "  Relaunch to retry."
         )
         tmp_path.unlink()
@@ -913,24 +731,15 @@ def _setup_as_bob(data_dir: Path, use_file_transfer: bool) -> tuple:
         sys.exit(1)
 
     tmp_path.unlink()
-
-    # Clean up transfer vault file after successful import
-    if use_file_transfer and path.exists():
-        try:
-            path.unlink()
-        except Exception:
-            pass
-
     print("  Vault decrypted successfully.")
 
     bundle_id = vault.bundle_id
 
-    # --- Personal passphrase ---
-    _print_header("Your Passphrase")
+    _print_header("Your Personal Passphrase")
     print()
     print("  Choose a strong passphrase to protect your vault.")
     print("  This is your own passphrase -- different from the")
-    print("  transfer phrase, which is now discarded.")
+    print("  transfer passphrase, which is now discarded.")
     print()
     print("  IMPORTANT: There is no recovery option.")
     print("  Write it down and store it somewhere physically safe.")
@@ -945,20 +754,14 @@ def _setup_as_bob(data_dir: Path, use_file_transfer: bool) -> tuple:
     reencrypt_vault(vault, vault_path, passphrase, salt)
     record_disclaimer_agreed(config_path)
 
-    # --- Message transport credentials ---
-    if use_file_transfer:
-        credentials = _setup_message_transport(
-            bundle_id, False, passphrase, salt, data_dir
-        )
-    else:
-        credentials = CredentialsData(
-            username     = username,
-            password     = password,
-            folder       = make_folder_name(bundle_id),
-            is_initiator = False,
-        )
-        creds_path = data_dir / "credentials.dat"
-        save_credentials(creds_path, credentials, passphrase, salt)
+    credentials = CredentialsData(
+        username     = username,
+        password     = password,
+        folder       = make_folder_name(bundle_id),
+        is_initiator = False,
+    )
+    creds_path = data_dir / "credentials.dat"
+    save_credentials(creds_path, credentials, passphrase, salt)
 
     _print_header("Setup Complete")
     print()
@@ -974,42 +777,33 @@ def _setup_as_bob(data_dir: Path, use_file_transfer: bool) -> tuple:
 # First run setup
 # ---------------------------------------------------------------------------
 
-def _run_setup(data_dir: Path) -> tuple:
-    _print_header("Letterbox Setup")
+def _run_setup(data_dir: Path) -> None:
+    _print_header("Letterbox -- First Time Setup")
+    print()
+    print("  Welcome to Letterbox.")
+    print()
+    print("  This application lets you correspond privately")
+    print("  with one person using one-time-pad encryption.")
+    print("  No servers. No algorithms. No strangers.")
     print()
     print("  Before continuing, read README.md and THREAT_MODEL.md.")
     print()
-    print("  1  Generate vault  — you are setting up first")
-    print("  2  Import vault    — your contact set up first")
+    _print_divider()
+    print()
+    print("  Are you setting up a new correspondence?")
+    print()
+    print("  1. Yes, I will generate the vault  (first party)")
+    print("  2. No, I will import a vault        (second party)")
     print()
 
     while True:
-        role = input("  > ").strip()
-        if role in ("1", "2"):
-            break
+        choice = input("  Enter 1 or 2: ").strip()
+        if choice == "1":
+            return _setup_as_alice(data_dir)
+        elif choice == "2":
+            return _setup_as_bob(data_dir)
         print("  Please enter 1 or 2.")
 
-    print()
-    _print_header("Vault Transfer")
-    print()
-    print("  How will you exchange the vault with your contact?")
-    print()
-    print("  1  Posteo  — upload and download over IMAP")
-    print("  2  File    — AirDrop or Files app")
-    print()
-
-    while True:
-        transfer = input("  > ").strip()
-        if transfer in ("1", "2"):
-            break
-        print("  Please enter 1 or 2.")
-
-    use_file = (transfer == "2")
-
-    if role == "1":
-        return _setup_as_alice(data_dir, use_file)
-    else:
-        return _setup_as_bob(data_dir, use_file)
 
 # ---------------------------------------------------------------------------
 # Main menu

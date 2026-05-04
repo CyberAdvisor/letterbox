@@ -518,44 +518,17 @@ All other modules are pure logic with no print() or input() calls.
 7. Open history database
 8. Main menu loop
 
-**Setup flow (v2.0):**
-_run_setup() presents two choices in sequence:
-
-- Role: Generate vault (Alice) or Import vault (Bob)
-- Transfer method: Posteo (IMAP upload/download) or File (AirDrop/Files)
-
-These four combinations drive the branching in _setup_as_alice() and
-_setup_as_bob(). Both functions accept a use_file_transfer bool.
-
-Alice (file path): generates vault -> passphrase -> saves
-letterbox_transfer.vault -> displays transfer phrase -> Press Enter ->
-setup complete. Posteo credentials collected by _setup_message_transport.
-
-Alice (Posteo path): generates vault -> passphrase -> Posteo credentials
--> upload -> displays all three items to provide to Bob -> Press Enter ->
-setup complete. Credentials already saved; no second step.
-
-Bob (file path): locates file -> transfer phrase -> decrypt -> passphrase
--> _setup_message_transport() collects Posteo credentials -> setup complete.
-Transfer vault file deleted after successful import.
-
-Bob (Posteo path): Posteo credentials + transfer phrase -> download ->
-decrypt -> passphrase -> credentials already saved -> setup complete.
+**--reset flag (Mac only):**
+Wipes the data directory after explicit confirmation (must type
+RESET). Structurally unreachable on iPad — platform check in
+get_data_dir() prevents argument parsing on Pythonista.
 
 **Ephemeral mode selection (setup only):**
-During Alice's setup flow, before vault generation, the user chooses
-between Standard (1) and Ephemeral (2) mode. The choice is passed to
+During Alice's setup flow, before vault generation, the user is
+asked whether to enable ephemeral mode. The choice is passed to
 generate_vault() and stored in the vault flags. Bob's setup flow
 is unchanged; he receives the flag automatically in the transfer
 vault and it is preserved through reencrypt_vault().
-
-**New helpers (v2.0):**
-- _save_transfer_vault_to_file(): writes encrypted transfer vault to
-  letterbox_transfer.vault in data_dir. Returns the path.
-- _load_transfer_vault_from_file(): prompts for file path with
-  default, validates, returns (path, bytes).
-- _setup_message_transport(): collects Posteo credentials and saves
-  them. Used by both parties on the file transfer path.
 
 **UI model (inbox):**
 Main menu shows status only: sent count, received count, unread
