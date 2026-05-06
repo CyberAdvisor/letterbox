@@ -5,7 +5,7 @@ who know each other.
 
 ---
 
-## Version 1.2.5 — Proof of Concept
+## Version 1.2.11 — Proof of Concept
 
 This is a proof of concept. Not a finished
 product. Not a professionally audited

@@ -9,7 +9,7 @@ no accounts beyond a shared Posteo email address, and no algorithms
 that can be broken by future computing advances.
 
 The complete codebase and documentation is in the attached zip:
-letterbox_final.zip
+letterbox_v1.2.11.zip
 
 ## How to Start
 
@@ -21,56 +21,54 @@ Extract the zip and read in this order:
 ## Current State — v1.2.11
 
 The application works end to end on Mac (two terminals simulating
-Alice and Bob) and is ready for iPad testing. All known bugs have
-been fixed. The codebase is clean and fully tested.
+Alice and Bob) and on iPad. All known bugs have been fixed.
+The codebase is clean and fully tested.
 
-v1.2.11 Documentation: pad consumption timing and history encryption model clarified in DESIGN.md.
-v1.2.10 Test suite: chi-squared entropy test, rollback tests 13.9-13.11, ephemeral replay tests 8.6-8.7.
-v1.2.9 Three security fixes: rollback detection enforced, ephemeral replay false positive, warning level bug.
-v1.2.8 THREAT_MODEL.md pad erasure correction (erasure is always unconditional).
-v1.2.7 THREAT_MODEL.md transport corrections (iCloud → Posteo IMAP).
-v1.2.6 INSTALL.md and README.md overhaul for new users.
-v1.2.5 remove unreliable iCloud detection; add vault storage threat model.
-v1.2.4 stamps/pads terminology documented in DESIGN and TECHNICAL_OVERVIEW.
-v1.2.3 user-facing 'pads' renamed to 'stamps' in UI.
-v1.2.2 fix iCloud detection using NSURLIsUbiquitousItemKey via objc_util.
-v1.2.1 type q to quit at passphrase prompts.
-v1.2.0 vault ID shown in menu status line.
-v1.1.9 version number displayed on startup.
-v1.1.8 fix ephemeral mode description text.
-v1.1.7 --reset flag removed; in-app reset is the only reset path.
-v1.1.6 in-app reset (all platforms), stale vault cleanup on upload.
-v1.1.5 code review cleanup: dead code, stale comments, clarity fixes.
-v1.1.4 ephemeral mode: n option removed, d/q only.
-v1.1.3 adds iCloud check, compose char count, ephemeral d/q, scroll fix.
-v1.1.2 reduces vault size to ~5MB and adds platform warning.
-v1.1.1 added unconditional pad erasure and fixed setup flow.
-v1.1.0 added ephemeral mode (see CHANGELOG.md and DESIGN.md).
-Existing v1.0.x vaults continue to work without modification.
+v1.2.11 UX overhaul: setup flow rewrite, compose flow, menu redesign,
+        documentation cleanup, bug fixes, reset via Files app.
+v1.2.10 Test suite: chi-squared entropy test, rollback tests, ephemeral replay tests.
+v1.2.9  Three security fixes: rollback detection enforced, ephemeral replay false positive, warning level bug.
+v1.2.8  THREAT_MODEL.md pad erasure correction.
+v1.2.7  THREAT_MODEL.md transport corrections (iCloud → Posteo IMAP).
+v1.2.6  INSTALL.md and README.md overhaul for new users.
+v1.2.5  Remove unreliable iCloud detection; add vault storage threat model.
+v1.2.4  Stamps/pads terminology documented.
+v1.2.3  User-facing 'pads' renamed to 'stamps' in UI (reverted in v1.2.11).
+v1.2.2  Fix iCloud detection.
+v1.2.1  Type q to quit at passphrase prompts.
+v1.2.0  Vault ID shown in menu status line.
+v1.1.x  Ephemeral mode, platform warning, vault size reduction, pad erasure.
+v1.0.x  Initial working implementation.
 
 ### What Works
+
 - Vault generation with random pad assignment
-- Vault ~5MB (5,000 pads × 1KB), upload/download in ~5-10 seconds
+- Vault ~5MB (5,000 pads × 1KB), upload/download via Posteo IMAP
+- Two-phase design: setup exits on completion, relaunch goes to menu
+- Setup retries on wrong credentials or wrong transfer phrase
+- Vault stays on Posteo until Bob successfully decrypts and saves
 - Non-Pythonista platform warning on every launch outside iOS
-- Pad key material erased after every send and receive (all modes)
-- Ephemeral mode: no message history, "Ready to delete?" prompt on receive
-- Vault exchange via Posteo IMAP dead drop (upload/download)
+- Pad material erased after every send and receive (all modes)
+- Ephemeral mode: no message history, delete prompt on receive
 - One-time-pad message encryption and decryption
-- Inbox model CLI: check shows new messages only
+- Own-message filtering at transport and pad layers
+- Check for messages (c), write message (w), history (h)
 - History paged at 5 messages, most recent first
 - Failed login attempt tracking with timestamps
 - Disclaimer shown once, agreement stored in config
-- Own-message filtering at transport and pad layers
+- Rollback detection: compromised vault blocked on login
 - MIME encoding correct (7bit, no double base64)
 
 ### Development Environment
+
 - Mac with Python 3.13 (installed from python.org)
 - VS Code with Python extension
-- Run with: PYTHONPATH=. python3 main.py --data data/alice
+- Run with: `PYTHONPATH=. python3 main.py --data data/alice`
 - Two terminals simulate Alice and Bob locally
-- Reset with: PYTHONPATH=. python3 main.py --data data/alice --reset
+- Reset by deleting data directory: `rm -rf data/alice`
 
-### Known Issues to Address
+### Known Issues
+
 - Vault upload to Posteo takes 60-90 seconds with no progress indicator
 - No progress shown during vault generation (20-30 seconds on iPad)
 - Vault transfer is Posteo-only; file/AirDrop option was considered and removed
@@ -85,8 +83,8 @@ Information-theoretically secure. Quantum resistant.
 8-byte plaintext header (bundle_id + pad_id) + 4096-byte
 OTP-encrypted payload.
 
-**Vault:** 10,000 pads of 4096 bytes each (~39MB). Randomly
-assigned -- 5,000 pads to each party. Random assignment means
+**Vault:** 5,000 pads of 1024 bytes each (~5MB). Randomly
+assigned -- 2,500 pads to each party. Random assignment means
 pad IDs reveal no directional metadata to an observer.
 
 **Transport:** Shared Posteo account. Messages posted via IMAP
@@ -149,27 +147,40 @@ e.g. Letterbox-a3f8c291
 
 ## Testing Checklist
 
-Before each test run:
-  PYTHONPATH=. python3 main.py --data data/alice --reset
-  PYTHONPATH=. python3 main.py --data data/bob --reset
+**Setup:**
+Delete data directories to start clean:
+```
+rm -rf data/alice data/bob
+```
 
-The RESET command requires typing RESET in full.
+Run Alice setup in left terminal:
+```
+PYTHONPATH=. python3 main.py --data data/alice
+```
 
-After reset, run Alice setup in left terminal, Bob setup in
-right terminal using the transfer passphrase Alice displays.
+Choose: Generate vault → mode → passphrase → Posteo credentials →
+upload → note the six-word transfer phrase → app exits.
 
-Check that (standard mode):
+Run Bob setup in right terminal:
+```
+PYTHONPATH=. python3 main.py --data data/bob
+```
+
+Choose: Import vault → same Posteo credentials → download →
+enter the six words → passphrase → app exits.
+
+Relaunch both terminals to begin messaging.
+
+**Standard mode checks:**
 - Sent count increments after each send
-- Send pads remaining decrements by 1 per message
+- Pads remaining decrements by 1 per message
 - Bob does not see his own messages when checking
 - Alice does not see her own messages when checking
 - History shows correct paged navigation
 - Disclaimer shown on first run only
+- Vault IDs match in both menus
 
-Check that (ephemeral mode -- select during Alice setup):
+**Ephemeral mode checks (select during vault generation):**
 - No message appears in history after send or receive
-- "Ready to delete?" prompt appears after each received message
-- Answering "yes" saves the vault with randomised pad bytes
-- Answering "no" shows message for the session only, no disk write
-- Vault file size is unchanged (erased pad replaced with random bytes,
-  not truncated)
+- Delete prompt appears after each received message
+- Vault file size unchanged (erased pad replaced with random bytes)
