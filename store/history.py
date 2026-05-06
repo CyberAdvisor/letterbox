@@ -41,9 +41,8 @@
 #     timestamp   INTEGER NOT NULL     -- unix timestamp
 #     displayed   INTEGER NOT NULL     -- 0 = unread, 1 = read
 #
-# The contact_id column is present from day one even though v1
-# only uses a single contact. This means the schema does not need
-# to change when multi-contact support is added in a future version.
+# The contact_id column is used for internal identification.
+# Letterbox supports exactly one contact by design.
 #
 # ---------------------------------------------------------------------------
 # Change Control

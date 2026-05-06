@@ -18,12 +18,15 @@ Extract the zip and read in this order:
 2. TECHNICAL_OVERVIEW.md -- how the code works at file level
 3. CHANGELOG.md       -- what has been built and what is known
 
-## Current State — v1.2.8
+## Current State — v1.2.11
 
 The application works end to end on Mac (two terminals simulating
 Alice and Bob) and is ready for iPad testing. All known bugs have
 been fixed. The codebase is clean and fully tested.
 
+v1.2.11 Documentation: pad consumption timing and history encryption model clarified in DESIGN.md.
+v1.2.10 Test suite: chi-squared entropy test, rollback tests 13.9-13.11, ephemeral replay tests 8.6-8.7.
+v1.2.9 Three security fixes: rollback detection enforced, ephemeral replay false positive, warning level bug.
 v1.2.8 THREAT_MODEL.md pad erasure correction (erasure is always unconditional).
 v1.2.7 THREAT_MODEL.md transport corrections (iCloud → Posteo IMAP).
 v1.2.6 INSTALL.md and README.md overhaul for new users.
@@ -70,8 +73,8 @@ Existing v1.0.x vaults continue to work without modification.
 ### Known Issues to Address
 - Vault upload to Posteo takes 60-90 seconds with no progress indicator
 - No progress shown during vault generation (20-30 seconds on iPad)
-- No physical vault transfer (AirDrop/USB) -- deferred to v2
-- Single contact only -- multi-contact deferred to v2
+- Vault transfer is Posteo-only; file/AirDrop option was considered and removed
+- Single contact only -- two-person correspondence by design
 
 ## Key Design Decisions (summary)
 
@@ -134,31 +137,12 @@ letterbox_code/
   LICENSE                 GPL v3
 ```
 
-## Planned v2 Features (in priority order)
+## Planned Features
 
-1. Physical vault transfer -- AirDrop and save-to-file options
-   Design is complete in DESIGN.md, just needs implementation
-   in main.py setup flow
-
-2. Progress indicator during vault generation and upload
-   Vault generation: print dot every N pads
-   Vault upload: no easy progress hook in imaplib APPEND
-
-3. Multi-contact support -- data model is already ready
-   contact_id column in history, vault per contact directory
-   Only needs contact selection UI in main.py
-
-4. Auto-check on startup -- check for new messages on launch
-   before showing main menu, no background process needed
-
-5. Resend flow -- Alice can resend a specific message by
-   sequence number when Bob reports a gap
-
-## Posteo Setup
-
-Shared account: michaellines@posteo.com
-IMAP host: posteo.de port 993
-App passwords generated in Posteo account settings
+None. Letterbox is intentionally scoped to private correspondence
+between exactly two people. This constraint is a deliberate security
+decision, not a limitation. More contacts means more vaults, more
+credentials, and more ways for the security model to break down.
 
 Each vault exchange uses a folder named Letterbox-[bundle_id_hex]
 e.g. Letterbox-a3f8c291

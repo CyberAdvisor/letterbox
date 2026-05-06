@@ -86,18 +86,12 @@ class VaultVersionError(VaultError):
 
 class VaultRollbackError(VaultError):
     """
-    Raised when the vault sequence counter on disk is
-    lower than the last known value stored in config.
-    This indicates the vault was restored from a backup,
-    which risks pad reuse. Sending is blocked until resolved.
-    This is the most serious vault error.
-
-    TODO: This exception is defined but not yet raised.
-    The check belongs in main._login(), comparing the vault
-    internal sequence against get_vault_sequence(config_path)
-    after a successful load_vault() call. The infrastructure
-    in store/config.py is complete -- only the enforcement
-    call in _login() is missing.
+    Raised when the vault sequence counter in config.dat is
+    higher than the number of used send pads in the vault index.
+    This indicates the vault was restored from a backup that
+    predates some sends, which risks pad reuse.
+    This is the most serious vault error -- the app blocks
+    all access and requires a reset.
     """
 
 class VaultPersistError(VaultError):
@@ -294,6 +288,7 @@ class CredentialsError(StorageError):
 # ---------------------------------------------------------------------------
 # Setup errors
 # 2026-05-03  M.Lines   v1.1.5: Add TODO comment to VaultRollbackError (not yet raised)
+# 2026-05-03  M.Lines   v1.2.9: VaultRollbackError now enforced in _login(); TODO removed
 # ---------------------------------------------------------------------------
 
 class SetupError(LetterboxError):

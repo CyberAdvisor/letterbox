@@ -10,19 +10,15 @@ This document describes the implementation of those decisions.
 
 ---
 
-## Terminology: Stamps vs Pads
+## Terminology
 
-The word **pad** is used throughout the code, constants, and
-technical documentation (e.g. `PAD_SIZE`, `PAD_COUNT`,
-`reserve_send_pad`, `erase_pad`). This refers to the
-one-time-pad key material stored in the vault.
+The word **pad** is used consistently throughout the code,
+constants, technical documentation, and the user interface
+(e.g. `PAD_SIZE`, `PAD_COUNT`, `reserve_send_pad`, `erase_pad`,
+"N pads remaining"). This refers to the one-time-pad key
+material stored in the vault.
 
-The user-facing UI uses the word **stamp** instead. A stamp is
-consumed once per message -- a more intuitive metaphor for
-non-technical users. One stamp = one pad = one message.
-
-Technical readers should treat "stamp" and "pad" as synonymous.
-The distinction is purely presentational.
+One pad = one message.
 
 ## Project Structure
 
@@ -396,7 +392,7 @@ extensions.
 **Schema (messages table):**
 ```sql
 id          INTEGER PRIMARY KEY AUTOINCREMENT
-contact_id  TEXT     -- '001' in v1, multi-contact ready
+contact_id  TEXT     -- '001' (single contact)
 direction   TEXT     -- 'sent' or 'received'
 sequence    INTEGER  -- message sequence number
 pad_id      INTEGER  -- pad used (for duplicate detection)
@@ -408,8 +404,7 @@ displayed   INTEGER  -- 0=unread, 1=read
 ```
 
 The contact_id column exists in v1 even though only one contact
-is supported. Adding multi-contact in v2 requires no schema
-changes.
+is supported. The schema uses a contact_id column internally.
 
 **Duplicate detection:**
 get_by_pad_id(pad_id) looks up a received message by its pad ID.
@@ -672,7 +667,7 @@ must be open and the user must press r.
 
 **Single contact.** v1 supports one contact relationship. The
 data model (contact_id column, vault per contact) is designed
-for multi-contact in v2 without schema changes.
+for internal contact identification.
 
 **Vault upload is slow.** Uploading 5MB via IMAP APPEND takes
 60-90 seconds. This is a one-time cost per vault exchange.

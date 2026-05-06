@@ -38,6 +38,8 @@
 # 2026-05-03  M.Lines   v1.1.5: Expunge own-message deletions unconditionally
 # 2026-05-03  M.Lines   v1.1.6: _delete_stale_vaults(): remove old vaults before upload
 # 2026-05-03  M.Lines   v1.1.6: upload_vault(): call _delete_stale_vaults before append
+# 2026-05-05  M.Lines   v1.2.11: download_vault(): do not delete vault on download
+# 2026-05-05  M.Lines   v1.2.11: add delete_transfer_vault() -- called after successful import
 # ---------------------------------------------------------------------------
 
 import base64
@@ -564,10 +566,9 @@ def download_vault(credentials: CredentialsData) -> bytes:
 
             vault_bytes = base64.b64decode(body_str[7:])
 
-            # Delete vault from server after successful download
-            conn.store(msg_id, '+FLAGS', '\\Deleted')
-            conn.expunge()
-
+            # Vault is NOT deleted here. It is deleted only after
+            # the importer has successfully decrypted and saved their
+            # copy. This allows retry if the transfer phrase is wrong.
             return vault_bytes
 
         finally:
@@ -582,6 +583,44 @@ def download_vault(credentials: CredentialsData) -> bytes:
         raise VaultDownloadError(
             f"Could not download vault: {e}"
         ) from e
+
+
+def delete_transfer_vault(credentials: CredentialsData) -> None:
+    """
+    Delete the transfer vault from the setup folder on Posteo.
+
+    Called after the importer has successfully decrypted and saved
+    their vault copy. Safe to call even if no vault is present.
+
+    Args:
+        credentials: Posteo account credentials
+    """
+    try:
+        conn = _connect(credentials)
+        try:
+            status, _ = conn.select(VAULT_FOLDER)
+            if status != 'OK':
+                return
+
+            status, message_ids = conn.search(
+                None,
+                f'SUBJECT "{VAULT_SUBJECT}"'
+            )
+
+            if status != 'OK' or not message_ids[0]:
+                return
+
+            for msg_id in message_ids[0].split():
+                conn.store(msg_id, '+FLAGS', '\\Deleted')
+            conn.expunge()
+
+        finally:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+    except Exception:
+        pass  # Best effort -- vault will expire or be overwritten
 
 
 def test_connection(credentials: CredentialsData) -> bool:

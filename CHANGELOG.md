@@ -51,9 +51,9 @@ Core features:
 
 Known limitations:
 - No push notifications -- manual check required
-- Physical vault transfer (AirDrop, USB) not yet implemented
+- Vault transfer uses Posteo upload/download only
   Vault exchange currently requires Posteo upload only
-- Single contact only (multi-contact ready architecturally)
+- Single contact only (two-person correspondence by design)
 - Text only -- no media
 - iPad and Pythonista 3 only
 - Vault upload to Posteo can take 60-90 seconds (39MB)
@@ -383,6 +383,99 @@ THREAT_MODEL.md now has a "Vault Files Outside the Device"
 section explaining that vault files must not be copied to
 iCloud Drive, cloud storage, or email. The threat is addressed
 through documentation rather than unreliable runtime detection.
+
+## 1.2.11 — Documentation Clarifications — 5 May 2026
+
+DOCUMENTATION — no code changes.
+
+**Pad consumption timing (DESIGN.md)**
+Clarified that pads are consumed at send attempt, not on confirmed
+delivery. If an IMAP send fails the pad is already marked used and
+a retry consumes a fresh pad. This behaviour was already documented
+inline in the send failure message shown to the user; it is now
+also stated explicitly in the Send Flow section of DESIGN.md.
+
+**History encryption model (DESIGN.md)**
+Clarified that message history is protected by conventional
+AES/PBKDF2 encryption keyed from the user's passphrase, not by
+OTP. The OTP guarantee applies to messages in transit. Once
+decrypted and stored, history has the same security properties
+as any encrypted database. This distinction was implicit in the
+design but not stated.
+
+## 1.2.10 — Test Suite: Entropy, Rollback, Ephemeral Replay — 3 May 2026
+
+MAINTENANCE — test suite improvements only, no production code changes.
+
+**Section 21 — Pad entropy tests strengthened**
+The existing pad data quality tests (21.1-21.3) were replaced with
+a proper statistical test suite running against the full production
+vault (~5MB), not a 10-block sample.
+
+- 21.1: No all-zero blocks — unchanged in scope, now checks all PAD_COUNT blocks
+- 21.2: Chi-squared byte frequency test across full vault. Threshold of 310
+  (255 df, p=0.001). A biased generator producing non-uniform byte
+  frequencies will fail this; genuine os.urandom scores ~245-265.
+- 21.3: Bit balance within 0.5% of 50% across ~40M bits.
+- 21.4: No duplicate pad blocks — any collision across 5000 blocks
+  indicates catastrophic RNG failure.
+- 21.5: Consecutive random_bytes calls differ (was 21.3).
+
+**Section 13 — Rollback detection tests added (13.9-13.11)**
+The stale NOTE documenting the rollback detection gap has been replaced
+with real tests. 13.9 verifies clean state (sequence == used pads).
+13.10 verifies the rollback condition is detected (sequence > used pads).
+13.11 verifies no false positive (fresh vault, sequence matches used pads).
+
+**Section 8 — Ephemeral replay false positive tests added (8.6-8.7)**
+New tests verify that in ephemeral mode, a used pad with no history
+record raises PadAlreadyUsedError with is_duplicate=True rather than
+PadReplayError. This is the v1.2.9 fix; these tests confirm it.
+
+Total tests: 147 → 152 (+5 net after replacing stale NOTE with 3 new
+tests and adding 2 ephemeral tests).
+
+## 1.2.9 — Security Fixes: Rollback Detection, Replay False Positive, Warning Level Bug — 3 May 2026
+
+SECURITY — apply before your next send.
+
+**Vault rollback detection enforced (Issue 1 — high severity)**
+`_login()` now compares the send sequence counter stored in
+`config.dat` against the number of used send pads in the vault
+index after every successful passphrase entry. If `config.dat`
+records more sends than the vault has used send pads, the vault
+has been restored from a backup that predates those sends —
+pad reuse is possible.
+
+On detection the app shows a COMPROMISED VAULT warning and
+blocks all access. The user must either type RESET to wipe all
+data and start over, or exit. There is no path to the main menu.
+The vault cannot be used.
+
+The infrastructure (`get_vault_sequence`, `update_vault_sequence`,
+`VaultRollbackError`) was already complete. Only the enforcement
+check in `_login()` was missing. The TODO comments in
+`core/exceptions.py` and `main._login()` have been removed.
+
+**Ephemeral mode false positive fixed (Issue 2 — medium severity)**
+`lookup_receive_pad()` in `core/pad.py` raised `PadReplayError`
+("possible replay attack") when a used pad had no history record.
+In ephemeral mode history is never written, so duplicate delivery
+of any message always triggered this false alarm.
+
+Fixed: if `vault.ephemeral` is True, a used pad with no history
+record is treated as duplicate delivery (`PadAlreadyUsedError`
+with `is_duplicate=True`) rather than a replay. The genuine
+replay path (`PadReplayError`) is unchanged in standard mode.
+
+**Pad warning level bug fixed (Issue 3 — low severity)**
+`PAD_WARNING_LEVELS` in `core/pad.py` was ordered least-severe
+to most-severe (500, 200, 100, 50, 10). The loop returned on
+first match, so 9 remaining stamps produced the mild 500-level
+warning instead of the CRITICAL warning. The list is now ordered
+most-severe first (10, 50, 100, 200, 500). The loop logic is
+unchanged — it still returns on first match, which is now always
+the most severe applicable threshold.
 
 ## 1.2.8 — Threat Model Pad Erasure Correction — 3 May 2026
 

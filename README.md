@@ -39,8 +39,8 @@ their specific situation.
 - Pythonista 3 on each iPad (~$10, App Store)
 - One shared Posteo email account
   (https://posteo.de, ~€1/month)
-- The ability to speak to your contact
-  in person or by video call
+- A way to securely provide your
+  contact with a six-word phrase
 
 That is the complete list. No other
 accounts, services, or subscriptions
@@ -232,8 +232,8 @@ someone messages you, use Signal.
 
 **People who want to message strangers.**
 This application only works between
-people who have met in person or by
-video call to exchange a vault.
+people who can securely exchange
+a six-word transfer phrase.
 This is a feature, not a limitation.
 
 **People who need to communicate

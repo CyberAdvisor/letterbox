@@ -1,6 +1,6 @@
 # main.py
 #
-# Letterbox v1.2.8 -- Proof of Concept
+# Letterbox v1.2.11 -- Proof of Concept
 # Entry point and complete CLI user interface.
 #
 # Usage:
@@ -53,6 +53,13 @@
 # 2026-05-03  M.Lines   v1.2.6: No code change -- docs only
 # 2026-05-03  M.Lines   v1.2.7: No code change -- THREAT_MODEL.md transport corrections
 # 2026-05-03  M.Lines   v1.2.8: No code change -- THREAT_MODEL.md pad erasure correction
+# 2026-05-03  M.Lines   v1.2.9: Vault rollback detection enforced in _login()
+# 2026-05-03  M.Lines   v1.2.9: VaultRollbackError: locks app, offers RESET or exit
+# 2026-05-03  M.Lines   v1.2.9: lookup_receive_pad: fix false PadReplayError in ephemeral mode
+# 2026-05-03  M.Lines   v1.2.9: PAD_WARNING_LEVELS reversed: most severe threshold checked first
+# 2026-05-03  M.Lines   v1.2.10: Test suite: statistical pad entropy tests, rollback tests, ephemeral replay test
+# 2026-05-05  M.Lines   v1.2.11: DESIGN.md: pad consumption timing and history encryption clarified
+# 2026-05-05  M.Lines   v1.2.11: UX overhaul: setup flow, menus, compose, history, received display
 # ---------------------------------------------------------------------------
 
 import hashlib
@@ -100,6 +107,7 @@ from core.exceptions import (
     PassphraseMismatchError,
     VaultNotFoundError,
     VaultPersistError,
+    VaultRollbackError,
     PadExhaustedError,
     PadAlreadyUsedError,
     PadReplayError,
@@ -152,6 +160,7 @@ from transport.posteo import (
     collect_messages,
     upload_vault,
     download_vault,
+    delete_transfer_vault,
     test_connection,
 )
 from util.random import (
@@ -172,7 +181,7 @@ def get_data_dir() -> Path:
     On iPad (Pythonista): fixed path in Pythonista documents folder.
     On Mac (development): path from --data argument, or data/default.
 
-    Reset is handled in-app via _reset_app() at the login prompt.
+    Reset is done by deleting the data folder (see INSTALL.md).
     The --reset command-line flag has been removed.
     """
     if is_pythonista():
@@ -365,52 +374,6 @@ def _enter_passphrase_with_confirm(prompt: str) -> str:
 # Login
 # ---------------------------------------------------------------------------
 
-def _reset_app(data_dir: Path) -> None:
-    """
-    Wipe all app data after explicit confirmation.
-
-    Deletes the entire data directory: vault, credentials, history,
-    and config. The app will run setup on the next launch.
-
-    Available on all platforms including iPad, where the --reset
-    command-line flag is not accessible.
-
-    Requires the user to type RESET to confirm. Any other input
-    cancels without deleting anything.
-    """
-    print()
-    print("!" * 52)
-    print("  RESET — ALL DATA WILL BE DELETED")
-    print("!" * 52)
-    print()
-    print("  This will permanently delete:")
-    print("  - Your vault (all stamp data)")
-    print("  - Your message history")
-    print("  - Your Posteo credentials")
-    print("  - Your configuration")
-    print()
-    print("  This cannot be undone.")
-    print("  A new vault exchange will be required.")
-    print()
-
-    confirm = input("  Type RESET to confirm, or anything else to cancel: ").strip()
-    print()
-
-    if confirm != "RESET":
-        print("  Reset cancelled.")
-        _press_enter()
-        return
-
-    if data_dir.exists():
-        import shutil
-        shutil.rmtree(data_dir)
-
-    print("  All data deleted.")
-    print("  The app will now exit. Relaunch to run setup.")
-    print()
-    sys.exit(0)
-
-
 def _login(data_dir: Path) -> tuple:
     """
     Prompt for passphrase and unlock encrypted files.
@@ -429,32 +392,34 @@ def _login(data_dir: Path) -> tuple:
         print(f"\n  Setup incomplete: {e}")
         sys.exit(1)
 
-    # Offer reset before the passphrase prompt.
-    # This is the only way to reset on iPad where --reset is unavailable.
-    # Shown once per login attempt, not inside the retry loop.
-    print()
-    print("  Enter your passphrase to continue.")
-    print("  Or type RESET to wipe all data and start over.")
-    print()
-    reset_check = input("  RESET or press Enter to continue: ").strip()
-    if reset_check == "RESET":
-        _reset_app(data_dir)
-        # _reset_app exits on confirmation; if cancelled we fall through
-        # and continue to the passphrase prompt below.
-
     attempts_this_session = 0
 
     while True:
         passphrase = _enter_passphrase("Enter passphrase")
 
         try:
-            # TODO: After load_vault succeeds, compare vault internal
-            # sequence against get_vault_sequence(config_path) and raise
-            # VaultRollbackError if the vault sequence is lower than the
-            # stored value. This would detect a vault restored from backup
-            # (which risks pad reuse). The infrastructure exists in
-            # store/config.py but the check is not yet enforced here.
             vault = load_vault(vault_path, passphrase)
+
+            # Rollback detection: config.dat records the highest send
+            # sequence ever committed. After N sends, exactly N send
+            # pads should be marked used in the vault index.
+            # If config.dat records more sends than the vault has used
+            # send pads, the vault has been restored from a backup that
+            # predates those sends -- pad reuse is possible.
+            stored_sequence = get_vault_sequence(config_path)
+            used_send_pads  = sum(
+                1 for i in vault.send_pads if vault.index[i]
+            )
+            if stored_sequence > used_send_pads:
+                raise VaultRollbackError(
+                    f"Vault appears to have been restored from a backup.\n"
+                    f"config.dat records {stored_sequence} messages sent "
+                    f"but the vault index shows only {used_send_pads} "
+                    f"send pads used.\n"
+                    "The vault may be out of sync with what was actually "
+                    "sent. Using it risks reusing pad material.\n"
+                    "The vault is locked."
+                )
 
             previous_failures = record_successful_login(config_path)
 
@@ -495,81 +460,83 @@ def _login(data_dir: Path) -> tuple:
                 f"{'s' if remaining > 1 else ''} remaining."
             )
 
+        except VaultRollbackError:
+            print()
+            print("!" * 52)
+            print("  COMPROMISED VAULT")
+            print("!" * 52)
+            print()
+            print("  The vault appears to have been restored from a")
+            print("  backup. Using it risks reusing pad material,")
+            print("  which would compromise all past and future")
+            print("  correspondence.")
+            print()
+            print("  This vault cannot be used.")
+            print()
+            print("  You must reset and run setup again with your")
+            print("  contact. Both parties need a new vault.")
+            print()
+            print("  Type RESET to delete all data and start over.")
+            print("  Any other input will exit the app.")
+            print()
+            answer = input("  > ").strip()
+            if answer == "RESET":
+                import shutil
+                if data_dir.exists():
+                    shutil.rmtree(data_dir)
+                print("  All data deleted. Relaunch to run setup.")
+                print()
+            sys.exit(1)
+
         except VaultNotFoundError:
             print("\n  Vault file not found. Setup may be incomplete.")
             sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
-# Setup -- Alice
+# Setup -- Generate Vault
 # ---------------------------------------------------------------------------
 
-def _setup_as_alice(data_dir: Path) -> None:
-    """Alice generates the vault and uploads it for Bob."""
-    _print_header("Setup -- Generating Vault")
-    print()
-    print("  You will:")
-    print("  1. Generate a vault")
-    print("  2. Set your personal passphrase")
-    print("  3. Enter your shared Posteo account details")
-    print("  4. Upload an encrypted copy for your contact")
-    print("  5. Tell your contact the transfer passphrase verbally")
-    print()
-    _press_enter("Press Enter to begin.")
+def _setup_generate_vault(data_dir: Path) -> tuple:
+    """Generate vault, save personal copy, upload for correspondent."""
 
-    _print_header("Ephemeral Mode")
+    # --- Mode ---
+    _print_header("Correspondence Mode")
     print()
-    print("  Standard mode: messages are saved to encrypted history.")
+    print("  1  Standard   — messages saved to encrypted history")
+    print("  2  Ephemeral  — messages never saved to disk")
     print()
-    print("  Ephemeral mode: messages are never saved. After reading,")
-    print("  you confirm deletion.")
-    print()
-    print("  Ephemeral mode applies to both parties automatically.")
-    print("  This setting is stored in the vault and cannot be changed")
-    print("  after setup without generating a new vault.")
+    print("  This applies to both parties and cannot be changed after setup.")
     print()
 
     while True:
-        mode_choice = input("  Use ephemeral mode? (y/n): ").strip().lower()
-        if mode_choice in ("y", "n"):
+        mode_choice = input("  > ").strip()
+        if mode_choice in ("1", "2"):
             break
-        print("  Please enter y or n.")
+        print("  Please enter 1 or 2.")
 
-    ephemeral = (mode_choice == "y")
+    ephemeral = (mode_choice == "2")
 
-    if ephemeral:
-        print()
-        print("  Ephemeral mode selected.")
-        print("  No message content will be saved to disk.")
-    else:
-        print()
-        print("  Standard mode selected.")
-        print("  Messages will be saved to encrypted history.")
-
-
+    # --- Generate ---
     print()
     print("  Generating vault...")
-    print("  This may take 20-30 seconds.")
-    print("  Keep the app in the foreground.")
-    print()
+    print("  This may take 20-30 seconds. Keep the app in the foreground.")
 
     bundle_id       = generate_bundle_id()
     salt            = generate_salt()
     vault           = generate_vault(bundle_id, ephemeral=ephemeral)
     transfer_phrase = generate_transfer_passphrase()
 
-    print("  Vault generated.")
+    print("  Done.")
 
-    _print_header("Your Personal Passphrase")
+    # --- Passphrase ---
+    _print_header("Your Passphrase")
     print()
     print("  Choose a strong passphrase to protect your vault.")
-    print("  This passphrase is yours alone -- never share it.")
+    print("  This is yours alone — never share it.")
     print()
-    print("  IMPORTANT: There is no recovery option.")
-    print("  If you forget this passphrase, your vault and")
-    print("  message history cannot be recovered.")
-    print()
-    print("  Write it down and store it somewhere physically safe.")
+    print("  There is no recovery option. Write it down")
+    print("  and keep it somewhere physically safe.")
     print()
 
     passphrase = _enter_passphrase_with_confirm("Choose your passphrase")
@@ -581,11 +548,10 @@ def _setup_as_alice(data_dir: Path) -> None:
     save_vault(vault, vault_path, passphrase, salt)
     record_disclaimer_agreed(config_path)
 
-    print("\n  Vault saved.")
-
-    _print_header("Posteo Account Details")
+    # --- Shared Posteo credentials ---
+    _print_header("Shared Posteo Account")
     print()
-    print("  Enter the details for your shared Posteo account.")
+    print("  Enter your shared Posteo account details.")
     print("  Use an app password, not your main account password.")
     print()
 
@@ -602,18 +568,20 @@ def _setup_as_alice(data_dir: Path) -> None:
     print("\n  Testing connection...")
     if not test_connection(credentials):
         print(
-            "\n  Could not connect to Posteo with these credentials.\n"
-            "  Check the address and app password.\n"
-            "  Setup has been saved -- relaunch to retry transport."
+            "\n  Could not connect. Check the address and app password.\n"
+            "  Relaunch to try again."
         )
-    else:
-        print("  Connection successful.")
+        sys.exit(1)
+
+    print("  Connected.")
 
     creds_path = data_dir / "credentials.dat"
     save_credentials(creds_path, credentials, passphrase, salt)
 
-    print("\n  Uploading vault for your contact...")
-    print("  This may take a minute -- the vault is large.")
+    # --- Upload ---
+    print()
+    print("  Uploading vault for your contact...")
+    print("  This may take a minute.")
 
     tmp_vault_path = data_dir / "transfer_vault.tmp"
     vault.is_transfer = True
@@ -625,124 +593,128 @@ def _setup_as_alice(data_dir: Path) -> None:
 
     try:
         upload_vault(transfer_vault_bytes, credentials)
-        print("  Vault uploaded.")
+        print("  Uploaded.")
     except Exception as e:
         print(f"\n  Could not upload vault: {e}")
-        print("  Ask your contact to try importing later.")
+        print("  Your contact can try importing later.")
 
-    _print_header("Tell Your Contact")
+    # --- Transfer phrase ---
+    _print_header("Provide to Your Contact")
     print()
-    print("  Tell your contact ALL of the following verbally.")
-    print("  In person or by video call only.")
-    print("  Do not send these details by text or email.")
+    print("  Give your contact these six words so they can")
+    print("  decrypt the vault. Provide it securely.")
     print()
-    print(f"  Posteo address:    {username}")
-    print(f"  App password:      {password}")
-    print(f"  Transfer phrase:   {transfer_phrase}")
+    print(f"  {transfer_phrase}")
     print()
-    print("  They will need all three to import the vault.")
+    print("  Also provide:")
+    print(f"  Posteo address:  {username}")
+    print(f"  App password:    {password}")
     print()
+    _press_enter("Press Enter when you have noted all three items.")
 
-    while True:
-        confirm_copied = input(
-            "  Have you copied these details to pass to your contact? (yes/no): "
-        ).strip().lower()
-        if confirm_copied == "yes":
-            break
-        if confirm_copied == "no":
-            print()
-            print("  Please copy the Posteo address, app password,")
-            print("  and transfer phrase before continuing.")
-            print("  You will not see the transfer phrase again.")
-            print()
-
-    _print_header("Setup Complete")
     print()
-    print("  You are ready to correspond.")
-    print("  Your contact can import the vault whenever they are ready.")
+    print("  ✦ Setup complete.")
+    print("  Relaunch Letterbox to begin corresponding.")
+    print("  You will be asked for your passphrase on each launch.")
     print()
-
-    return passphrase, salt, vault
+    sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
-# Setup -- Bob
+# Setup -- Import Vault
 # ---------------------------------------------------------------------------
 
-def _setup_as_bob(data_dir: Path) -> None:
-    """Bob downloads and imports the vault Alice uploaded."""
-    _print_header("Setup -- Importing Vault")
-    print()
-    print("  You need three things your contact told you verbally:")
-    print("  - Posteo address")
-    print("  - App password")
-    print("  - Transfer passphrase (four words)")
-    print()
-
-    username        = input("  Posteo address:      ").strip()
-    password        = input("  App password:        ").strip()
-    transfer_phrase = input("  Transfer passphrase: ").strip()
+def _setup_import_vault(data_dir: Path) -> tuple:
+    """Import vault from Posteo, decrypt with transfer phrase, save personal copy."""
 
     salt = generate_salt()
 
-    credentials = CredentialsData(
-        username     = username,
-        password     = password,
-        folder       = "Letterbox-Setup",
-        is_initiator = False,
-    )
+    # --- Shared Posteo credentials (retry on failure) ---
+    while True:
+        _print_header("Shared Posteo Account")
+        print()
+        print("  Enter the shared Posteo account details")
+        print("  your contact provided.")
+        print()
 
-    print("\n  Connecting to Posteo...")
-    if not test_connection(credentials):
-        print(
-            "\n  Could not connect to Posteo with these credentials.\n"
-            "  Check the address and app password and try again."
+        username = input("  Posteo address: ").strip()
+        password = input("  App password:   ").strip()
+
+        credentials = CredentialsData(
+            username     = username,
+            password     = password,
+            folder       = "Letterbox-Setup",
+            is_initiator = False,
         )
-        sys.exit(1)
 
-    print("  Connected. Downloading vault...")
-    print("  This may take a minute -- the vault is large.")
+        print("\n  Connecting...")
+        if test_connection(credentials):
+            print("  Connected.")
+            break
+
+        print()
+        print("  Could not connect. Check the address and app password.")
+        print("  Press Enter to try again, or q to quit.")
+        if input("  > ").strip().lower() == "q":
+            sys.exit(0)
+
+    # --- Download ---
+    print()
+    print("  Downloading vault...")
+    print("  This may take a minute.")
 
     try:
         transfer_vault_bytes = download_vault(credentials)
     except Exception as e:
         print(f"\n  Could not download vault: {e}")
+        print("  Ask your contact to confirm the vault has been uploaded.")
         sys.exit(1)
 
-    print("  Vault downloaded.")
+    print("  Downloaded.")
 
+    # --- Transfer phrase (retry on wrong phrase) ---
     tmp_path = data_dir / "transfer_incoming.tmp"
     tmp_path.write_bytes(transfer_vault_bytes)
 
-    print("\n  Decrypting vault with transfer passphrase...")
-    try:
-        vault = load_vault(tmp_path, transfer_phrase, is_transfer=True)
-    except WrongPassphraseError:
-        print(
-            "\n  Incorrect transfer passphrase.\n"
-            "  Check what your contact told you and try again.\n"
-            "  Relaunch to retry."
-        )
-        tmp_path.unlink()
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n  Could not decrypt vault: {e}")
-        tmp_path.unlink()
-        sys.exit(1)
+    while True:
+        _print_header("Transfer Phrase")
+        print()
+        print("  Enter the six words your contact gave you.")
+        print()
+
+        transfer_phrase = input("  Transfer phrase: ").strip()
+
+        print()
+        print("  Decrypting...")
+        try:
+            vault = load_vault(tmp_path, transfer_phrase, is_transfer=True)
+            break
+        except WrongPassphraseError:
+            print()
+            print("  Incorrect transfer phrase.")
+            print("  Press Enter to try again, or q to quit.")
+            if input("  > ").strip().lower() == "q":
+                tmp_path.unlink()
+                sys.exit(0)
+        except Exception as e:
+            print(f"\n  Could not decrypt vault: {e}")
+            tmp_path.unlink()
+            sys.exit(1)
 
     tmp_path.unlink()
-    print("  Vault decrypted successfully.")
+    print("  Done.")
 
     bundle_id = vault.bundle_id
 
-    _print_header("Your Personal Passphrase")
+    # --- Passphrase ---
+    _print_header("Your Passphrase")
     print()
     print("  Choose a strong passphrase to protect your vault.")
-    print("  This is your own passphrase -- different from the")
-    print("  transfer passphrase, which is now discarded.")
+    print("  This is yours alone — different from the transfer")
+    print("  phrase, which is now discarded.")
     print()
-    print("  IMPORTANT: There is no recovery option.")
-    print("  Write it down and store it somewhere physically safe.")
+    print("  There is no recovery option. Write it down")
+    print("  and keep it somewhere physically safe.")
     print()
 
     passphrase = _enter_passphrase_with_confirm("Choose your passphrase")
@@ -763,45 +735,48 @@ def _setup_as_bob(data_dir: Path) -> None:
     creds_path = data_dir / "credentials.dat"
     save_credentials(creds_path, credentials, passphrase, salt)
 
-    _print_header("Setup Complete")
+    # Vault is safely saved -- now delete it from Posteo
     print()
-    print("  Vault imported successfully.")
-    print("  You are ready to correspond.")
-    print()
+    print("  Removing vault from server...")
+    dl_creds = CredentialsData(
+        username     = username,
+        password     = password,
+        folder       = "Letterbox-Setup",
+        is_initiator = False,
+    )
+    delete_transfer_vault(dl_creds)
 
-    vault = load_vault(vault_path, passphrase)
-    return passphrase, salt, vault
+    print()
+    print("  ✦ Setup complete.")
+    print("  Relaunch Letterbox to begin corresponding.")
+    print("  You will be asked for your passphrase on each launch.")
+    print()
+    sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
 # First run setup
 # ---------------------------------------------------------------------------
 
-def _run_setup(data_dir: Path) -> None:
-    _print_header("Letterbox -- First Time Setup")
+def _run_setup(data_dir: Path) -> tuple:
     print()
-    print("  Welcome to Letterbox.")
-    print()
-    print("  This application lets you correspond privately")
-    print("  with one person using one-time-pad encryption.")
-    print("  No servers. No algorithms. No strangers.")
+    print("  ✦ Letterbox")
+    print("  First-time setup")
     print()
     print("  Before continuing, read README.md and THREAT_MODEL.md.")
     print()
     _print_divider()
     print()
-    print("  Are you setting up a new correspondence?")
-    print()
-    print("  1. Yes, I will generate the vault  (first party)")
-    print("  2. No, I will import a vault        (second party)")
+    print("  1  Generate vault  — you are creating the vault for you and your correspondent to use")
+    print("  2  Import vault    — you are using the vault your correspondent created")
     print()
 
     while True:
-        choice = input("  Enter 1 or 2: ").strip()
+        choice = input("  > ").strip()
         if choice == "1":
-            return _setup_as_alice(data_dir)
+            return _setup_generate_vault(data_dir)
         elif choice == "2":
-            return _setup_as_bob(data_dir)
+            return _setup_import_vault(data_dir)
         print("  Please enter 1 or 2.")
 
 
@@ -810,25 +785,22 @@ def _run_setup(data_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _show_main_menu(history: MessageHistory, vault: object) -> str:
-    """Show status and menu only. Returns chosen action."""
-    _print_header(f"Letterbox v{APP_VERSION}")
+    """Show status and menu. Returns chosen action."""
 
     pads_remaining = vault.remaining_send_pads()
+    vault_id       = f"{vault.bundle_id:08x}"
 
     print()
-    vault_id = f"{vault.bundle_id:08x}"
+    print("  ✦ Letterbox")
+    print(f"  Private correspondence  ·  {vault_id}")
+    print()
 
     if vault.ephemeral:
-        print(f"  Stamps: {pads_remaining}  Vault: {vault_id}  [ephemeral mode]")
+        print(f"  {pads_remaining} pads remaining  ·  [ephemeral]")
     else:
         sent_count = history.get_next_send_sequence() - 1
         recv_count = len(history.get_received_sequences())
-        unread     = history.get_unread_count()
-        print(f"  Sent: {sent_count}  "
-              f"Received: {recv_count}  "
-              f"Unread: {unread}  "
-              f"Stamps: {pads_remaining}  "
-              f"Vault: {vault_id}")
+        print(f"  {sent_count} sent  ·  {recv_count} received  ·  {pads_remaining} pads remaining")
 
     warning = check_pad_warning(vault)
     if warning:
@@ -837,22 +809,18 @@ def _show_main_menu(history: MessageHistory, vault: object) -> str:
     print()
     _print_divider()
     print()
-    print("  c  Compose message")
-    print("  r  Check for new messages")
+    print("  w  Write a message")
+    print("  c  Check for messages")
 
     if not vault.ephemeral:
-        if unread > 0:
-            print(f"  u  Read unread  ({unread})")
         print("  h  History")
 
     print("  q  Quit")
     print()
 
-    valid = {"c", "r", "q"}
+    valid = {"w", "c", "q"}
     if not vault.ephemeral:
         valid.add("h")
-        if unread > 0:
-            valid.add("u")
 
     while True:
         choice = input("  > ").strip().lower()
@@ -963,11 +931,13 @@ def _check_and_show_new(
         total = len(new_messages)
         for i, msg in enumerate(new_messages):
             is_last = (i == total - 1)
-            _print_divider()
-            ts = _format_timestamp(int(time.time()))
-            print(f"\n  [{msg['sequence']}] Received -- {ts}")
+            ts   = _format_timestamp(int(time.time()))
+            rule = f"  ── Received {ts} " + "─" * max(0, 44 - len(f"Received {ts}"))
             print()
-            _print_wrapped(msg["content"], indent="    ")
+            print(rule)
+            print()
+            for ln in msg["content"].split("\n"):
+                print(f"    {ln}")
             print()
 
             if is_last:
@@ -990,43 +960,18 @@ def _check_and_show_new(
                 return
 
     else:
-        _print_divider()
         for msg in new_messages:
-            ts = _format_timestamp(int(time.time()))
-            print(f"\n  [{msg['sequence']}] Received -- {ts}")
-            _print_wrapped(msg["content"], indent="    ")
+            ts = _format_timestamp(msg.get("timestamp", int(time.time())))
+            rule = f"  ── Received {ts} " + "─" * max(0, 44 - len(f"Received {ts}"))
+            print()
+            print(rule)
+            print()
+            for ln in msg["content"].split("\n"):
+                print(f"    {ln}")
+            print()
 
         _show_gap_summary(history)
 
-    _press_enter()
-
-
-# ---------------------------------------------------------------------------
-# Read unread
-# ---------------------------------------------------------------------------
-
-def _read_unread(history: MessageHistory) -> None:
-    """Show all unread messages then mark them displayed."""
-    msgs   = history.get_conversation(limit=10000)
-    unread = [m for m in msgs
-              if m["direction"] == "received" and m["displayed"] == 0]
-
-    if not unread:
-        print("\n  No unread messages.")
-        _press_enter()
-        return
-
-    print(f"\n  {len(unread)} unread message"
-          f"{'s' if len(unread) > 1 else ''}:\n")
-    _print_divider()
-
-    for msg in unread:
-        ts = _format_timestamp(msg["timestamp"])
-        print(f"\n  [{msg['sequence']}] Received -- {ts}")
-        _print_wrapped(msg["content"], indent="    ")
-
-    history.mark_all_displayed()
-    _show_gap_summary(history)
     _press_enter()
 
 
@@ -1053,35 +998,36 @@ def _show_history(history: MessageHistory) -> None:
     page        = total_pages - 1   # start on most recent page
 
     while True:
-        _print_header(f"History  [page {page + 1} of {total_pages}]")
+        print()
+        print("  ── Correspondence " + "─" * 35)
+        if total_pages > 1:
+            print(f"  Page {page + 1} of {total_pages}")
+        print()
 
         start = page * page_size
         end   = min(start + page_size, total)
         msgs  = all_msgs[start:end]
 
-        print()
         for msg in msgs:
             direction = msg["direction"]
             ts        = _format_timestamp(msg["timestamp"])
-            unread    = (direction == "received"
-                         and msg["displayed"] == 0)
 
             if direction == "received":
-                marker = "  [NEW] " if unread else "  "
-                print(f"{marker}[{msg['sequence']}] Received -- {ts}")
+                print(f"  {ts}  received")
             else:
-                print(f"  Sent -- {ts}")
+                print(f"  {ts}  sent")
 
-            _print_wrapped(msg["content"], indent="    ")
+            for ln in msg["content"].split("\n"):
+                print(f"    {ln}")
             print()
 
         _print_divider()
         nav = []
         if page > 0:
-            nav.append("p  Older")
+            nav.append("p  older")
         if page < total_pages - 1:
-            nav.append("n  Newer")
-        nav.append("q  Back")
+            nav.append("n  newer")
+        nav.append("q  back")
         print("  " + "    ".join(nav))
         print()
 
@@ -1131,56 +1077,118 @@ def _compose_message(
     passphrase:  str,
     salt:        bytes,
 ) -> None:
-    """Compose and send a message. Blank line to send, Ctrl+C to cancel."""
-    _print_header("Compose Message")
-    print()
-    print(f"  Type your message. Maximum {MAX_CONTENT_BYTES} characters.")
-    print("  Type END on a new line to send.")
-    print("  Press Ctrl+C to cancel.")
-    print()
+    """Compose and send a message."""
 
-    lines    = []
-    used     = 0
+    while True:
+        _print_header("Write")
+        print()
+        print("  Each line ends with Return. Press Return twice when done.")
+        print("  Line breaks are preserved. Ctrl+C to cancel.")
+        print(f"  ({MAX_CONTENT_BYTES} characters available)")
+        print()
 
-    try:
+        lines          = []
+        used           = 0
+        warned_low     = False
+        last_was_blank = False
+
+        try:
+            while True:
+                line = input("  > ")
+
+                # Double-Enter to finish
+                if line == "":
+                    if last_was_blank:
+                        if lines and lines[-1] == "":
+                            lines.pop()
+                        break
+                    last_was_blank = True
+                    lines.append(line)
+                    used = len("\n".join(lines).encode("utf-8"))
+                    continue
+                else:
+                    last_was_blank = False
+
+                candidate     = "\n".join(lines + [line])
+                candidate_len = len(candidate.encode("utf-8"))
+
+                if candidate_len > MAX_CONTENT_BYTES:
+                    over = candidate_len - MAX_CONTENT_BYTES
+                    print()
+                    print(f"  Message is {over} character{'s' if over != 1 else ''} over the limit.")
+                    print()
+                    print("  r  Start over")
+                    print("  t  Truncate to fit")
+                    print("  x  Cancel")
+                    print()
+                    while True:
+                        answer = input("  > ").strip().lower()
+                        if answer in ("r", "t", "x"):
+                            break
+                        print("  Please enter r, t, or x.")
+                    if answer == "r":
+                        break
+                    elif answer == "x":
+                        print()
+                        return
+                    elif answer == "t":
+                        candidate_bytes = candidate.encode("utf-8")
+                        truncated = candidate_bytes[:MAX_CONTENT_BYTES].decode("utf-8", errors="ignore")
+                        last_break = max(truncated.rfind(" "), truncated.rfind("\n"))
+                        if last_break > 0:
+                            truncated = truncated[:last_break]
+                        lines = truncated.split("\n")
+                        break
+                    continue
+
+                lines.append(line)
+                used      = len("\n".join(lines).encode("utf-8"))
+                remaining = MAX_CONTENT_BYTES - used
+
+                if not warned_low and remaining <= 100:
+                    print(f"  [{remaining} characters remaining]")
+                    warned_low = True
+
+        except KeyboardInterrupt:
+            print("\n\n  Cancelled.")
+            return
+
+        if not lines or all(ln == "" for ln in lines):
+            print()
+            print("  Nothing written.")
+            _press_enter()
+            return
+
+        content_str = "\n".join(lines)
+
+        # Preview
+        print()
+        _print_divider()
+        print()
+        for ln in lines:
+            print(f"    {ln}")
+        print()
+        _print_divider()
+        print()
+        print("  s  Send")
+        print("  r  Start over")
+        print("  x  Cancel")
+        print()
+
         while True:
-            line = input("  > ")
-            if line.strip().upper() == "END":
+            answer = input("  > ").strip().lower()
+            if answer in ("s", "r", "x"):
                 break
-            # Check if adding this line would exceed the limit
-            candidate = "\n".join(lines + [line])
-            candidate_len = len(candidate.encode("utf-8"))
-            if candidate_len > MAX_CONTENT_BYTES:
-                over = candidate_len - MAX_CONTENT_BYTES
-                print(
-                    f"  Too long: that line would exceed the limit by {over} "
-                    f"character{'s' if over != 1 else ''}."
-                )
-                print(f"  [{MAX_CONTENT_BYTES - used} remaining] Shorten the line or type END to send what you have.")
-                continue
-            lines.append(line)
-            used = len("\n".join(lines).encode("utf-8"))
-            remaining = MAX_CONTENT_BYTES - used
-            print(f"  [{remaining} remaining]")
-    except KeyboardInterrupt:
-        print("\n\n  Cancelled.")
-        return
+            print("  Please enter s, r, or x.")
 
-    if not lines:
-        print("\n  Empty message not sent.")
-        return
+        if answer == "x":
+            print()
+            return
+        if answer == "r":
+            continue
+        break   # send
 
-    content = "\n".join(lines)
-
-    print()
-    print("  Message to send:")
-    print()
-    _print_wrapped(content, indent="    ")
-    print()
-    confirm = input("  Send? (y/n): ").strip().lower()
-    if confirm != "y":
-        print("\n  Cancelled.")
-        return
+    content = content_str
 
     try:
         pad_id, pad_bytes = reserve_send_pad(vault)
@@ -1231,7 +1239,7 @@ def _compose_message(
     update_vault_sequence(data_dir / "config.dat", sequence)
 
     remaining = vault.remaining_send_pads()
-    print(f"  Sent. ({remaining} stamps remaining)")
+    print(f"  Sent. ({remaining} pads remaining)")
     _press_enter()
 
 
@@ -1275,18 +1283,16 @@ def main() -> None:
             while True:
                 action = _show_main_menu(history, vault)
 
-                if action == "c":
+                if action == "w":
                     _compose_message(
                         vault, history, credentials,
                         data_dir, passphrase, salt,
                     )
-                elif action == "r":
+                elif action == "c":
                     _check_and_show_new(
                         vault, history, credentials,
                         data_dir, passphrase, salt,
                     )
-                elif action == "u":
-                    _read_unread(history)
                 elif action == "h":
                     _show_history(history)
                 elif action == "q":

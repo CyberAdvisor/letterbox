@@ -7,26 +7,15 @@ understand not just what was built but why.
 
 ---
 
-## Terminology: Stamps vs Pads
+## Terminology
 
 The underlying cryptographic primitive is a one-time pad (OTP).
-Throughout the codebase, constants, and technical documentation
-the word **pad** is used: `PAD_SIZE`, `PAD_COUNT`, `reserve_send_pad`,
-`erase_pad`, `VaultData.send_pads`, and so on.
+The word **pad** is used consistently throughout the codebase,
+technical documentation, and the user interface: `PAD_SIZE`,
+`PAD_COUNT`, `reserve_send_pad`, `erase_pad`, `VaultData.send_pads`,
+and the UI status line "N pads remaining".
 
-The application UI presents these to the user as **stamps**.
-The stamp metaphor was chosen because it is concrete and
-self-explanatory to non-technical users: a stamp is used once,
-leaves a mark, and you have a finite supply. It carries none of
-the cryptographic baggage of "pad" and avoids confusion with
-writing pads or notepads.
-
-The choice to use different terminology in the UI versus the code
-was deliberate: technical accuracy matters in code and
-documentation that developers read; clarity matters in the
-interface that users see.
-
-**One stamp = one pad = one message.** They are the same thing.
+**One pad = one message.**
 
 ## What Letterbox Is
 
@@ -330,8 +319,7 @@ compatibility.
 **Chosen because:** SQLite is in Python's standard library. 
 No external dependencies. Reliable, well-tested, handles 
 concurrent access correctly. A contact_id column is present 
-from day one to support multiple contacts in future versions 
-without schema changes.
+in the schema for internal identification.
 
 ### Single Passphrase Protecting Everything
 
@@ -355,7 +343,11 @@ which introduce new attack surfaces.
 
 **Chosen because:** Messages are decrypted on receipt 
 and stored in plaintext in the encrypted SQLite database. 
-The pad is consumed once and gone.
+The pad is consumed once and gone. History is protected 
+by conventional AES/PBKDF2 encryption keyed from the 
+user's passphrase — not by OTP. The OTP guarantee applies 
+to messages in transit; once decrypted and stored, history 
+has the same security properties as any encrypted database.
 
 **What was rejected:** Storing ciphertext for re-decryption 
 later is architecturally awkward with OTP. The pad is 
@@ -530,19 +522,16 @@ No images, no file attachments, no media.
 text messages. Media sharing would require either 
 much larger blocks wasting pad material, or a 
 separate file transfer mechanism adding complexity. 
-This may be revisited in a future version.
+Media sharing is out of scope.
 
 ### Two People Only
 
-Version 1.0 supports correspondence between exactly 
-two people. The data structures are designed to 
-support multiple contacts in future versions — 
-contact ID columns are present in the database, 
-vault files are stored in contact-specific directories 
-— but the v1 interface exposes only one conversation. 
-Adding multi-contact support in v2 requires no 
-architectural changes, only additional UI and 
-contact management logic.
+Letterbox supports correspondence between exactly 
+two people. This is a deliberate design decision, 
+not a limitation. More contacts means more vaults, 
+more credentials, more session state to manage, and 
+more ways for the security model to break down. 
+The two-person constraint is the security model.
 
 ### No Anonymity
 
@@ -635,6 +624,10 @@ capture or Posteo logs before deletion), they cannot reconstruct
 the plaintext because the key is gone.
 
 **Send flow:**
+The pad is consumed at send attempt, not on confirmed delivery.
+If the IMAP send fails, the pad is already marked used and a
+retry will consume a fresh pad. This is documented in the
+send failure message shown to the user.
 Pad erased immediately after successful transmission. In standard
 mode the message is also saved to history. In ephemeral mode it
 is not.
@@ -754,11 +747,12 @@ design. The attack remains theoretically possible but the
 resources required are now serious rather than trivial.
 
 **Residual risk acknowledged:**
-Physical exchange (AirDrop or USB) eliminates this risk entirely
-because the vault never touches any server. For users whose
-threat model includes well-resourced adversaries with access to
-Posteo, physical exchange is the recommended path and is
-documented in INSTALL.md.
+The encrypted transfer vault exists on Posteo briefly between
+Alice uploading and Bob downloading. The 2,000,000-iteration KDF
+and 6-word passphrase make brute-force attack impractical. For
+users whose threat model includes well-resourced adversaries with
+access to Posteo infrastructure, the residual risk is documented
+in THREAT_MODEL.md.
 
 **Implementation:**
 derive_vault_key() in store/vault.py accepts an is_transfer
@@ -769,30 +763,22 @@ generate_transfer_passphrase() in util/random.py generates 6 words
 instead of 4.
 
 
-### Physical Vault Transfer (deferred to v2)
+### Vault Transfer Method
 
-**Decision:** Physical vault transfer via AirDrop or USB save-to-file
-was designed but not implemented in v1. The vault exchange currently
-requires Posteo upload.
+**Decision:** Vault exchange uses Posteo as the transfer mechanism.
+Alice uploads an encrypted transfer vault to the shared Posteo
+account. Bob downloads and decrypts it with the 6-word transfer
+phrase. No alternative transfer mechanism is implemented.
 
-**Why deferred:** Triggering AirDrop programmatically from a CLI
-Python script in Pythonista requires the ui module which has been
-deliberately avoided. A save-to-file option is straightforward but
-the complete flow -- save path selection, Bob's import path, Mac
-development testing path -- requires careful design of the setup
-branching logic. Deferred to keep v1 scope contained.
+**Why Posteo only:** A file-based transfer option (AirDrop or USB)
+was considered and prototyped but removed. The additional UX
+complexity -- file path navigation, AirDrop instructions, save
+location ambiguity on iOS -- introduced more user error risk than
+the marginal security benefit justified, given the transfer vault
+is already protected by 2,000,000 KDF iterations and a 6-word
+passphrase.
 
-**Planned v2 implementation:**
-- Third option in setup: Save to file (physical transfer)
-- Alice saves encrypted transfer vault to Documents folder
-- App displays file path and manual AirDrop/USB instructions
-- Bob's import: choose between Posteo download or file import
-- Default paths handle Mac development testing automatically
-- Posteo credentials still required for ongoing message exchange
-
-**Security note:** Physical transfer eliminates the Posteo exposure
-window entirely. Even with the 6-word passphrase and 2,000,000 KDF
-iterations, Posteo upload means the encrypted vault exists on a
-third-party server. Physical transfer via AirDrop or USB means
-the vault moves directly between devices with no server involvement.
-This is the recommended path for users with serious threat models.
+**Security posture:** The transfer vault is on Posteo briefly
+between upload and download. It is encrypted independently of the
+personal vault and cannot be decrypted without the transfer phrase.
+The residual risk is documented in THREAT_MODEL.md.

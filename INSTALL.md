@@ -10,11 +10,32 @@ You need three things before you begin:
 2. **A shared Posteo email account** that
    both you and your contact can access
 3. **A contact** who also has an iPad with
-   Pythonista 3, and who you can speak to
-   in person or by video call
+   Pythonista 3, and a way to provide
+   them with a six-word phrase securely
 
 If you are missing any of these, read the
 relevant section below before proceeding.
+
+---
+
+## How Letterbox Works
+
+Letterbox has two distinct phases:
+
+**Phase 1 — Vault exchange (once only)**
+One person generates the vault and the
+other imports it. This is done once.
+The app exits when complete.
+
+**Phase 2 — Messaging (every session)**
+Both parties relaunch Letterbox, enter
+their passphrase, and the main menu
+appears. From here you write and check
+for messages.
+
+The two phases are separate by design.
+Setup is atomic and complete before
+any messaging begins.
 
 ---
 
@@ -134,8 +155,8 @@ On your iPad:
 
   Settings
   → [Your Name]
-  → iCloud
-  → iCloud Drive
+  → Saved to iCloud
+  → See All
   → Pythonista 3 → enable
 
 If Pythonista 3 does not appear in the
@@ -156,7 +177,7 @@ synced to iCloud.
 1. On your iPad, go to the Letterbox
    GitHub releases page and download
    the latest zip file
-   (e.g. letterbox_v1.2.5.zip)
+   (e.g. letterbox_v1.2.11.zip)
 
 2. Open the Files app
 
@@ -196,112 +217,74 @@ version number.
 
 On first run the app will:
 
-1. Display the version number
-2. Show a disclaimer — read it, then
+1. Show a disclaimer — read it, then
    type AGREE to continue
-3. Ask whether you are generating
+2. Ask whether you are generating
    or importing a vault
 
-You are generating if you are Alice
-(the first party to set up).
-You are importing if you are Bob
-(receiving the vault Alice generated).
-
-Decide who is Alice and who is Bob
-before you begin. It does not matter
-which role each person takes.
+Decide who goes first before you begin.
+It does not matter which role each
+person takes.
 
 ---
 
 ## Step 6 — Vault Exchange
 
-One person (Alice) generates the vault
-and the other (Bob) imports it. Both must
-complete this step before either can send
-a message.
+One person generates the vault and the
+other imports it. Both must complete
+this step before either can send a
+message. Setup exits when complete —
+relaunch to begin corresponding.
 
-### Before You Begin
+### The person generating the vault
 
-Have the following ready:
-
-- The shared Posteo account address
-- The Posteo app password
-- A way to speak to your contact
-  (in person or video call)
-
-### Alice — Generating the Vault
-
-1. Run Letterbox and choose
-   "Generate vault" at the first-run
-   prompt
-2. Choose standard or ephemeral mode
-   (see the Ephemeral Mode section below)
-3. Wait for vault generation
+1. Run Letterbox
+2. Choose: Generate vault
+3. Choose correspondence mode
+   (standard or ephemeral — see below)
+4. Wait for vault generation
    (20–30 seconds)
-4. Choose your personal vault passphrase
-   — write it down and store it somewhere
-   physically safe. There is no recovery
-   option.
-5. Enter the shared Posteo address and
-   app password when prompted
-6. Wait for the vault to upload
-   (5–10 seconds)
-7. Letterbox displays three things:
-   - The Posteo address
-   - The Posteo app password
-   - A six-word transfer passphrase
+5. Choose your personal passphrase
+   — write it down. No recovery option.
+6. Enter the shared Posteo address
+   and app password
+7. Wait for vault upload
+8. Letterbox displays a six-word
+   transfer phrase and the Posteo
+   details
+9. Provide all three to your contact
+   securely
 
-8. Confirm you have copied all three,
-   then tell Bob ALL of the following
-   verbally — in person or by video
-   call only. Never by text or email:
-   - The Posteo address
-   - The Posteo app password
-   - The six-word transfer passphrase
+### The person importing the vault
 
-### Bob — Importing the Vault
-
-1. Run Letterbox and choose
-   "Import vault" at the first-run
-   prompt
-2. Enter the Posteo address Alice
-   gave you verbally
-3. Enter the Posteo app password
-4. Enter the six-word transfer
-   passphrase
-5. Wait for the vault to download
-   and decrypt (5–10 seconds)
-6. Choose your own personal vault
-   passphrase — different from the
-   transfer passphrase. Write it down.
-7. Setup is complete
+1. Run Letterbox
+2. Choose: Import vault
+3. Enter the shared Posteo address
+   and app password your contact
+   provided
+4. Enter the six-word transfer phrase
+5. Wait for download and decrypt
+6. Choose your own personal passphrase
+   — write it down. No recovery option.
+7. Setup is complete — relaunch to
+   begin corresponding
 
 ### Identity Verification
 
 The person you exchange a vault with
 is the only person you can correspond
 with using that vault. Verify their
-identity before accepting:
-
-- In person is strongest
-- Video call is adequate for people
-  whose face and voice you know well
-- Voice call only is adequate for
-  people whose voice you can identify
-  with certainty
+identity before exchanging.
 
 Do not exchange vaults with anyone you
 cannot positively identify.
 
-### What Must Travel by Voice Only
+### Protecting the Transfer Phrase
 
-The six-word transfer passphrase must
-never be written down or sent digitally.
-Speak it only.
-
-The Posteo address and app password are
-also sensitive. Do not send them by
-text or email.
+The six-word transfer phrase protects
+the vault during upload. Provide it
+securely to your contact. Do not send
+it by unencrypted text or email.
 
 ---
 
@@ -317,15 +300,15 @@ confirm with your contact that:
   of Letterbox (shown at startup)
 
 If the vault IDs do not match, one of
-you has imported the wrong vault. Reset
-and start the vault exchange again.
+you has imported the wrong vault. See
+the Reset section below to start over.
 
 ---
 
 ## Ephemeral Mode
 
-When Alice generates a vault she is
-asked whether to enable ephemeral mode.
+The vault generator is asked whether
+to enable ephemeral mode.
 
 **Standard mode (default):**
 Messages are saved to an encrypted
@@ -341,7 +324,7 @@ to disk in any form.
 
 The mode choice is stored in the vault
 and applies automatically to both
-parties. Bob does not need to make
+parties. The importer does not make
 a separate choice. The mode cannot
 be changed after setup without
 generating a new vault.
@@ -403,11 +386,10 @@ attempts the app will exit and you must
 relaunch.
 
 **Need to start over:**
-At the passphrase prompt, enter RESET
-when asked "RESET or press Enter to
-continue". Confirm with RESET again.
-All data will be deleted. You will need
-to generate a new vault and exchange
+Delete the data folder as described in
+the Reset section below. Relaunch to
+run setup again. You will need to
+generate a new vault and exchange
 it with your contact again.
 
 **Vault mismatch:**
@@ -426,3 +408,32 @@ addressed.
 **Reporting security vulnerabilities:**
 See SECURITY.md. Do not open public
 GitHub issues for vulnerabilities.
+
+---
+
+## Resetting Letterbox
+
+Resetting deletes your vault, credentials,
+history, and configuration. Your scripts
+are not affected. You will need to run
+setup again and exchange a new vault
+with your contact.
+
+**On iPad:**
+
+1. Open the Files app
+2. Tap "On My iPad" (not iCloud Drive)
+3. Open Pythonista 3
+4. Press and hold the letterbox folder
+5. Tap Delete
+6. Relaunch Letterbox
+
+**On Mac (development only):**
+
+```bash
+rm -rf data/alice
+# or
+rm -rf data/bob
+```
+
+Relaunch to run setup again.
