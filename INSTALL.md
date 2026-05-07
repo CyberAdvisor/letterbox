@@ -143,6 +143,38 @@ read them. This adds a second independent
 layer of protection on top of Letterbox's
 own encryption.
 
+### Step 2b — Disable iCloud Backup for Pythonista
+
+This step is required. If Pythonista's
+data is backed up to iCloud and your
+device is later restored from that
+backup, your vault will be silently
+rolled back to its state at backup time.
+This creates a pad reuse risk with no
+warning. See THREAT_MODEL.md — iCloud
+Backup Restore.
+
+On your iPad:
+
+  Settings
+  → [Your Name]
+  → iCloud
+  → iCloud Backup
+  → Back Up This iPhone → On
+  → Show All Apps
+  → Pythonista 3 → disable
+
+This means your vault, credentials, and
+message history cannot be recovered if
+you lose your device. This is correct.
+A vault that can be restored from a
+backup can also be rolled back to a
+prior state.
+
+If you lose your device, delete the
+letterbox folder on your new device and
+generate a new vault with your contact.
+
 ---
 
 ## Step 3 — Enable iCloud Drive for Pythonista

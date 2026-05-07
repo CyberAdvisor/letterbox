@@ -226,12 +226,50 @@ contact. Do not transfer the old vault.
 
 The script files (main.py and the letterbox_code 
 folder) may be stored in iCloud Drive -- they are 
-code, not secrets. Only the data files must remain 
-local: vault.dat, credentials.dat, history.db, and 
-config.dat. These are stored in Pythonista's local 
-Documents folder (~/Documents/letterbox) and are 
-not synced to iCloud unless you have explicitly 
-enabled iCloud sync for Pythonista in iOS Settings.
+code, not secrets. The data files must remain 
+local and must not be backed up to iCloud: 
+vault.dat, credentials.dat, history.db, and 
+config.dat.
+
+To ensure this, disable iCloud backup for 
+Pythonista in iOS Settings. See INSTALL.md Step 2. 
+If Pythonista backup is enabled, a device restore 
+will silently roll back your vault to a prior 
+state. See iCloud Backup Restore below.
+
+### iCloud Backup Restore
+
+If your device is restored from an iCloud 
+backup, the vault and config files are 
+restored to their state at the time of 
+the backup. Any messages sent after that 
+backup will have consumed pad slots that 
+now appear unused again in the restored 
+vault. Your correspondent's vault still 
+has those pads marked used.
+
+This creates a silent pad reuse risk: 
+you may send new messages using pad 
+slots your correspondent has already 
+seen and marked used. They will receive 
+replay warnings. You will have no 
+indication anything is wrong.
+
+The rollback detection compares 
+config.dat against the vault index. A 
+backup restore makes both files 
+consistent at the old state -- the 
+detection does not fire because the 
+inconsistency is between your restored 
+state and your correspondent's current 
+state, which lives on a separate device.
+
+Mitigation: disable iCloud backup for 
+Pythonista entirely. See INSTALL.md 
+Step 2. If your device is restored from 
+a backup, treat your vault as compromised. 
+Delete the letterbox data folder and 
+generate a new vault with your contact.
 
 ### Device Compromise by Sophisticated Attackers
 

@@ -1,6 +1,6 @@
 # main.py
 #
-# Letterbox v1.2.11 -- Proof of Concept
+# Letterbox v1.2.12 -- Proof of Concept
 # Entry point and complete CLI user interface.
 #
 # Usage:
@@ -60,6 +60,7 @@
 # 2026-05-03  M.Lines   v1.2.10: Test suite: statistical pad entropy tests, rollback tests, ephemeral replay test
 # 2026-05-05  M.Lines   v1.2.11: DESIGN.md: pad consumption timing and history encryption clarified
 # 2026-05-05  M.Lines   v1.2.11: UX overhaul: setup flow, menus, compose, history, received display
+# 2026-05-07  M.Lines   v1.2.12: THREAT_MODEL.md iCloud backup restore risk; INSTALL.md Step 2b
 # ---------------------------------------------------------------------------
 
 import hashlib

@@ -18,12 +18,13 @@ Extract the zip and read in this order:
 2. TECHNICAL_OVERVIEW.md -- how the code works at file level
 3. CHANGELOG.md       -- what has been built and what is known
 
-## Current State — v1.2.11
+## Current State — v1.2.12
 
 The application works end to end on Mac (two terminals simulating
 Alice and Bob) and on iPad. All known bugs have been fixed.
 The codebase is clean and fully tested.
 
+v1.2.12 iCloud backup restore risk documented in THREAT_MODEL.md and INSTALL.md.
 v1.2.11 UX overhaul: setup flow rewrite, compose flow, menu redesign,
         documentation cleanup, bug fixes, reset via Files app.
 v1.2.10 Test suite: chi-squared entropy test, rollback tests, ephemeral replay tests.
@@ -37,7 +38,8 @@ v1.2.3  User-facing 'pads' renamed to 'stamps' in UI (reverted in v1.2.11).
 v1.2.2  Fix iCloud detection.
 v1.2.1  Type q to quit at passphrase prompts.
 v1.2.0  Vault ID shown in menu status line.
-v1.1.x  Ephemeral mode, platform warning, vault size reduction, pad erasure.
+v1.1.0  Ephemeral mode added.
+v1.1.x  Platform warning, vault size reduction, pad erasure, in-app reset.
 v1.0.x  Initial working implementation.
 
 ### What Works
