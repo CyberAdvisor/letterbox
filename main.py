@@ -79,9 +79,30 @@ class UI:
             sys.exit(0)
         return val
 
+    def check_passphrase_strength(self, passphrase):
+        """
+        Returns a list of unmet requirements, empty if passphrase is strong enough.
+        """
+        errors = []
+        if len(passphrase) < 10:
+            errors.append("At least 10 characters required.")
+        if not any(c.isupper() for c in passphrase):
+            errors.append("At least one uppercase letter required.")
+        if not any(not c.isalnum() and c != ' ' for c in passphrase):
+            errors.append("At least one non-alphanumeric character required (not space).")
+        return errors
+
     def enter_passphrase_with_confirm(self, prompt):
         while True:
             p1 = self.enter_passphrase(prompt)
+            errors = self.check_passphrase_strength(p1)
+            if errors:
+                print()
+                print("  Passphrase does not meet requirements:")
+                for e in errors:
+                    print(f"  - {e}")
+                print()
+                continue
             p2 = self.enter_passphrase("Confirm passphrase")
             if p1 == p2:
                 return p1
