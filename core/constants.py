@@ -144,7 +144,7 @@ KDF_KEY_SIZE            = 32       # 256-bit key
 # failed attempt tracking. No sensitive data.
 # ---------------------------------------------------------------------------
 
-APP_VERSION             = '3.1.1'
+APP_VERSION             = '3.2.0'
 
 DISCLAIMER_TEXT = (
     "This project is an experimental proof of concept and is provided "

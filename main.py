@@ -5,6 +5,7 @@
 #
 # Change Control
 # 2026-05-09  M.Lines   v3.1.0  Initial release. See README.md and CHANGELOG.md.
+# 2026-05-09  M.Lines   v3.2.0  Passphrase strength enforcement added.
 import os
 import sys
 import textwrap

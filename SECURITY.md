@@ -71,6 +71,8 @@ Letterbox has not been audited by an independent security professional. It may c
 
 The passphrase is the only key protecting your vault and credentials at rest. A weak passphrase significantly weakens all security guarantees. Use a long, random passphrase and store it securely offline.
 
+Letterbox enforces minimum passphrase requirements: at least 10 characters, one uppercase letter, and one non-alphanumeric character (space does not count). These are minimum requirements — a stronger passphrase is always better.
+
 ### Physical device security
 
 If an adversary has physical access to an unlocked iPad, or to an iPad where the data directory is unencrypted, vault and credential files may be accessible. Enable a strong iPad passcode and ensure the device auto-locks.

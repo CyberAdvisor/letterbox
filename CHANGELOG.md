@@ -4,6 +4,17 @@ All notable changes to Letterbox are documented here.
 
 ---
 
+## [3.2.0] — 2026-05-09
+
+### Added
+- Passphrase strength enforcement on all passphrase set and change operations
+  - Minimum 10 characters
+  - At least one uppercase letter
+  - At least one non-alphanumeric character (space does not count)
+  - Failed requirements shown individually before retry prompt
+
+---
+
 ## [3.1.0] — 2026-05-09 — Baseline Release
 
 First stable release of the v3 architecture. All v3.0.x development changes consolidated.

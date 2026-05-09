@@ -12,7 +12,7 @@ Letterbox is a proof-of-concept private messaging application built on informati
 - **Encryption:** One-time pad (information-theoretically secure)
 - **Transport:** Posteo IMAP dead drop — no SMTP, no routing, no third-party servers
 - **Key exchange:** Physical vault transfer (USB, file, or Posteo upload)
-- **Version:** 3.1.0
+- **Version:** 3.2.0
 
 ---
 
