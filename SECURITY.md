@@ -95,7 +95,9 @@ If an adversary has physical access to an unlocked iPad, or to an iPad where the
 
 ### iCloud backup
 
-If iCloud backup is enabled, vault and credentials files may be backed up and accessible to Apple or to anyone who gains access to the iCloud account. Consider disabling iCloud backup for the Pythonista app, or be aware of this risk.
+Letterbox data files (`vault.dat`, `credentials.dat`, `config.dat`) are stored in `This iPad / Pythonista 3 / Documents / letterbox /` — a local directory that is not affected by iCloud Drive. They are not backed up to iCloud.
+
+The script files, including `constants.py`, may be stored in iCloud Drive if Pythonista's iCloud Drive is enabled. If a duress passphrase is set in `constants.py`, it will be readable in iCloud. Follow the installation instructions to move script files to local storage and disable iCloud Drive for Pythonista before setting a duress passphrase.
 
 ### Transfer vault
 

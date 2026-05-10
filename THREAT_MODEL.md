@@ -127,11 +127,11 @@ If the plaintext credentials are compromised (e.g. observed during entry), the a
 
 ### T11 — iCloud backup
 
-**Threat:** Vault and credential files are backed up to iCloud and accessed by Apple or an adversary who gains iCloud access.
+**Threat:** Script files including `constants.py` are backed up to iCloud, exposing the duress passphrase if set.
 
-**Mitigation:** Files are encrypted at rest. iCloud backup adds another attack surface for the encrypted files, but the content cannot be read without the passphrase.
+**Mitigation:** Letterbox data files (`vault.dat`, `credentials.dat`, `config.dat`) are stored in a local directory (`This iPad / Pythonista 3 / Documents / letterbox /`) that is not affected by iCloud Drive. They are not backed up. The installation instructions direct users to move script files to local storage and disable iCloud Drive for Pythonista before setting a duress passphrase.
 
-**Residual risk:** If iCloud is compromised and the passphrase is weak, files could be brute-forced offline. Consider disabling iCloud backup for Pythonista.
+**Residual risk:** If the user skips the local storage migration, script files remain in iCloud. The duress passphrase in `constants.py` would be readable by Apple or anyone with iCloud access. Complete Steps 4 and 5 of the installation before setting `DURESS_PASSPHRASE`.
 
 ---
 

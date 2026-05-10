@@ -16,27 +16,41 @@ Letterbox is designed exclusively for iPad and Pythonista 3. Running on other pl
 
 Purchase and install Pythonista 3 from the App Store. No additional packages are required — Letterbox uses only Python standard library modules.
 
-### Step 2 — Copy Letterbox files
+### Step 2 — Transfer files via iCloud Drive
 
-Download the latest release zip (`letterbox_vX.Y.Z.zip`) and extract it. You will find a folder called `letterbox_code` containing all source files.
+iCloud Drive is needed to get the files onto the iPad. You will move them to local storage in Step 4.
 
-Copy the contents of `letterbox_code` to your iPad using one of:
+1. Enable iCloud Drive for Pythonista: **Settings → [your name] → iCloud → iCloud Drive** → enable Pythonista
+2. Download the latest release zip (`letterbox_vX.Y.Z.zip`) and extract it
+3. Copy the extracted `letterbox_vX.Y.Z` folder into `iCloud Drive / Pythonista 3 /` using the Files app or Finder
+4. On iPad, open Pythonista 3, navigate to the `letterbox_vX.Y.Z` folder in the iCloud location, and confirm `main.py` is visible
 
-- **iCloud Drive** → copy to `On My iPad / Pythonista 3 / letterbox/`
-- **AirDrop** → send files to iPad, open with Pythonista
-- **USB** → use Finder (macOS) or iTunes (Windows) file sharing
+### Step 3 — Confirm the app runs from iCloud
 
-The target location on iPad is:
+Tap `main.py` to run it once and confirm Letterbox launches. You do not need to complete setup yet — just confirm it starts.
 
-```
-On My iPad / Pythonista 3 / letterbox/
-```
+### Step 4 — Move files to local storage
 
-All `.py` files and subdirectories (`core/`, `store/`, `transport/`, `util/`) must be present at the same level as `main.py`.
+Keeping script files in iCloud means they are backed up to Apple's servers. If you set a duress passphrase in `constants.py`, it would be readable in iCloud. Move the files to local storage:
 
-### Step 3 — Launch
+1. In the Files app, navigate to `iCloud Drive / Pythonista 3 /`
+2. Long-press the `letterbox_vX.Y.Z` folder → **Move**
+3. Navigate to **This iPad / Pythonista 3 /** and place it there
+4. In Pythonista 3, open `main.py` from the new local location and confirm it still runs
+5. Navigate back to `iCloud Drive / Pythonista 3 /` and confirm the folder is no longer there
 
-Open Pythonista 3, navigate to the `letterbox` folder, and tap `main.py` to run.
+### Step 5 — Disable iCloud backup for Pythonista
+
+1. Go to **Settings → [your name] → iCloud → iCloud Drive**
+2. Turn off Pythonista
+
+This prevents future script files from being backed up to iCloud. It does not affect the data directory.
+
+### Step 6 — Complete setup in Letterbox
+
+1. Select **[1] Enter / Update Posteo Credentials** — enter your shared Posteo email and app password, set your passphrase
+2. Select **[2] Generate / Import OTP Vault** — generate or import a vault with your correspondent
+3. Select **[3] Send / Receive Messages**
 
 ---
 
@@ -45,7 +59,7 @@ Open Pythonista 3, navigate to the `letterbox` folder, and tap `main.py` to run.
 Letterbox stores all data in:
 
 ```
-On My iPad / Pythonista 3 / Documents / letterbox /
+This iPad / Pythonista 3 / Documents / letterbox /
 ```
 
 This directory contains:
@@ -53,7 +67,21 @@ This directory contains:
 - `credentials.dat` — your encrypted Posteo credentials
 - `config.dat` — sequence counters and session state
 
-Do not modify or delete these files manually. Use the Files app if you need to back them up, but be aware that restoring from a backup can trigger rollback detection.
+This location is local to the device and is not affected by enabling or disabling iCloud Drive for Pythonista. Do not modify or delete these files manually. Be aware that restoring from a device backup can trigger rollback detection.
+
+---
+
+## Optional: Duress passphrase
+
+To enable a duress passphrase, edit `constants.py` (line 38):
+
+```python
+DURESS_PASSPHRASE = "your duress phrase here"
+```
+
+Entering this passphrase at any unlock prompt silently wipes all data and returns "Wrong passphrase." — indistinguishable from a normal failed entry. See `constants.py` for full instructions and rules.
+
+**Important:** complete Step 4 (move to local storage) and Step 5 (disable iCloud) before setting a duress passphrase. If iCloud backup is still enabled, `constants.py` containing the duress passphrase will be backed up to iCloud.
 
 ---
 
@@ -61,10 +89,10 @@ Do not modify or delete these files manually. Use the Files app if you need to b
 
 To update to a new version:
 
-1. Download the new release zip
-2. Extract `letterbox_code`
-3. Copy all `.py` files over the existing files on iPad
-4. Do **not** delete `vault.dat`, `credentials.dat`, or `config.dat`
+1. Download the new release zip and extract it
+2. In the Files app, move the new folder to `This iPad / Pythonista 3 /`
+3. Copy all `.py` files from the new folder over the existing files — or replace the folder entirely
+4. Do **not** delete `vault.dat`, `credentials.dat`, or `config.dat` in `Documents / letterbox /`
 
 Your vault and credentials are preserved across updates as long as the data files are not deleted.
 
@@ -75,7 +103,7 @@ Your vault and credentials are preserved across updates as long as the data file
 For development or testing on macOS:
 
 ```bash
-cd letterbox_code
+cd letterbox_vX.Y.Z
 python3 main.py --data data/alice    # Alice's data directory
 python3 main.py --data data/bob      # Bob's data directory
 ```
