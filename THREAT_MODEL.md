@@ -135,6 +135,26 @@ If the plaintext credentials are compromised (e.g. observed during entry), the a
 
 ---
 
+### T12 — Brute force passphrase attempts
+
+**Threat:** Adversary repeatedly tries passphrases against the vault, either at the device or against a copy of `vault.dat`.
+
+**Mitigation:** Each attempt costs ~0.5 seconds (200,000 PBKDF2 iterations). In addition, the app enforces escalating delays after failed attempts (30s, 1m, 5m, 30m) stored in `config.dat` — these survive quit-and-restart. After 10 consecutive failures all data files are wiped with a 3-pass random overwrite before deletion.
+
+**Residual risk:** An adversary with a copy of `vault.dat` can attempt offline brute force without delay enforcement. The KDF cost (200,000 iterations, ~0.5s/attempt) and passphrase entropy (~57+ bits for a strong passphrase) make exhaustive search computationally infeasible.
+
+---
+
+### T13 — Coerced unlock
+
+**Threat:** Adversary compels the user to unlock the vault under duress.
+
+**Mitigation:** An optional duress passphrase can be configured in `core/constants.py`. Entering it at any unlock prompt silently wipes all data (3-pass random overwrite of all data files) and returns "Wrong passphrase." — indistinguishable from a normal failed entry. The check fires instantly before any delay or KDF work.
+
+**Residual risk:** The duress passphrase is stored in plaintext in `constants.py`. An adversary with access to the source files can read it. The duress feature is most effective against an adversary who does not have prior access to the device.
+
+---
+
 ## Out of Scope
 
 The following threats are outside the scope of this proof of concept:

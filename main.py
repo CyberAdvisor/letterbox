@@ -209,9 +209,11 @@ def main():
         print()
         ui.divider()
         print()
+        creds_done = (data_dir / "credentials.dat").exists()
+        vault_done = (data_dir / "vault.dat").exists()
         choice = ui.menu([
-            "Enter / Update Posteo Credentials",
-            "Generate / Import OTP Vault",
+            f"Enter / Update Posteo Credentials{'  ✓' if creds_done else ''}",
+            f"Generate / Import OTP Vault{'  ✓' if vault_done else ''}",
             "Send / Receive Messages",
             "Exit",
         ])

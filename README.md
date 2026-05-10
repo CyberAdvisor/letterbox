@@ -12,7 +12,7 @@ Letterbox is a proof-of-concept private messaging application built on informati
 - **Encryption:** One-time pad (information-theoretically secure)
 - **Transport:** Posteo IMAP dead drop — no SMTP, no routing, no third-party servers
 - **Key exchange:** Physical vault transfer (USB, file, or Posteo upload)
-- **Version:** 3.2.0
+- **Version:** 3.3.0
 
 ---
 
@@ -27,6 +27,8 @@ Letterbox is a proof-of-concept private messaging application built on informati
 | Subject obfuscation | HMAC-based token hides pad identity from transport observer |
 | Replay protection | Pad bitmap — used pads cannot be reused |
 | Rollback detection | Sequence counter compared to vault state on each launch |
+| Brute force protection | Escalating delays after failed unlock attempts; wipe after 10 failures |
+| Duress wipe | Optional duress passphrase triggers silent data wipe |
 
 ---
 
@@ -154,6 +156,56 @@ msg-[bundle_id_hex]-[subject_token_hex]
 ## Session Management
 
 The passphrase is asked once per session — in whichever option is used first — then cached in memory via `session_store.py`. It is never written to disk. On exit, the session is discarded.
+
+---
+
+## Setup Progress
+
+The main menu shows a ✓ next to steps 1 and 2 once completed:
+
+```
+  [1] Enter / Update Posteo Credentials  ✓
+  [2] Generate / Import OTP Vault        ✓
+  [3] Send / Receive Messages
+  [4] Exit
+```
+
+Step 1 is marked complete when `credentials.dat` exists. Step 2 when `vault.dat` exists.
+
+---
+
+## Brute Force Protection
+
+Letterbox enforces escalating delays and a hard wipe limit on failed passphrase attempts:
+
+| Attempt | Delay before next attempt |
+|---|---|
+| 1–5 | None |
+| 6 | 30 seconds |
+| 7 | 1 minute |
+| 8 | 5 minutes — WARNING: 2 attempts remaining |
+| 9 | 30 minutes — WARNING: 1 attempt remaining |
+| 10 | All data wiped |
+
+Delays are enforced even after quit-and-restart — the timestamp is stored in `config.dat`.
+
+---
+
+## Duress Passphrase
+
+Letterbox supports an optional duress passphrase. If set, entering it at any unlock prompt immediately wipes all vault data, credentials, and config — then returns "Wrong passphrase." as if nothing happened.
+
+To enable, edit `core/constants.py` at the top of the file:
+
+```python
+DURESS_PASSPHRASE = "your duress phrase here"
+```
+
+Rules:
+- Must differ from your real passphrase
+- Stored in plaintext in `constants.py` — do not use a passphrase used elsewhere
+- Set to `None` to disable (default)
+- The duress check fires instantly, before any delay or KDF work
 
 ---
 

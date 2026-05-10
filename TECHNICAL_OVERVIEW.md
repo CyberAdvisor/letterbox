@@ -153,10 +153,13 @@ Pad lifecycle (reserve, confirm used, lookup). Subject token generation and look
 VaultData class. Key derivation. Vault serialisation/deserialisation. Token table build/load. `generate_vault`, `save_vault`, `load_vault`, `reencrypt_vault`.
 
 ### `store/config.py`
-Config file read/write. Sequence counters (send + receive). Failed attempt tracking. Disclaimer recording.
+Config file read/write. Sequence counters (send + receive). Failed attempt tracking. Lockout delay calculation. Disclaimer recording.
 
 ### `store/credentials.py`
 CredentialsData class. Encrypted save/load of Posteo credentials.
+
+### `store/wipe.py`
+`wipe_all_data()` — 3-pass random overwrite and deletion of all data files. Called on 10th failed attempt and on duress passphrase entry. Silent — raises no exceptions.
 
 ### `transport/posteo.py`
 IMAP connection and operations. `post_message`, `collect_messages`, `upload_vault`, `download_vault`. Own-message filtering via token table.

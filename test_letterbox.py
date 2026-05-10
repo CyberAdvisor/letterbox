@@ -120,22 +120,23 @@ try:
     )
     from core.message import encrypt_message, decrypt_message, parse_header
     from core.pad import (
-        reserve_send_pad, lookup_receive_pad,
+        reserve_send_pad, lookup_receive_pad_v3,
         confirm_pad_used, check_pad_warning, PAD_WARNING_LEVELS,
     )
     from core.constants import VAULT_FLAG_EPHEMERAL
     from store.vault import (
         generate_vault, save_vault, load_vault, reencrypt_vault,
-        derive_vault_key, derive_credentials_key, derive_history_key,
+        derive_vault_key, derive_credentials_key,
         _encrypt, _decrypt, _index_to_bytes, _bytes_to_index,
         _generate_keystream, VaultData,
     )
     from store.config import (
         create_config, read_config, write_config, record_failed_attempt,
         record_successful_login, update_vault_sequence, get_vault_sequence,
+        failed_attempt_count, lockout_wait_seconds,
         CONFIG_FILE_SIZE,
     )
-    from store.history import MessageHistory
+    from store.wipe import wipe_all_data
     from util.random import (
         random_bytes, generate_salt, generate_bundle_id,
         generate_transfer_passphrase, generate_pad_data,
@@ -165,11 +166,6 @@ def make_vault(send_count=50, passphrase="test", data_dir=None):
     return vault, salt, passphrase
 
 
-def make_history(data_dir, passphrase, salt):
-    """Open a MessageHistory, return it (caller must close)."""
-    h = MessageHistory(data_dir, passphrase, salt)
-    h.open()
-    return h
 
 
 def pick_one_receive_pad(vault):
@@ -512,15 +508,13 @@ section("7 · Own-Message Filtering at the Pad Layer  [SECURITY]")
 vault, salt, passphrase = make_vault()
 d = tmpdir()
 try:
-    history = make_history(d, passphrase, salt)
-
-    # A pad in vault.send_pads is one WE sent with
+    # A pad in vault.send_pads is one WE sent with -- must be rejected
     own_pad_id = pick_one_send_pad(vault)
 
     err = check_raises(
-        "7.1  lookup_receive_pad with our own send pad raises PadAlreadyUsedError",
+        "7.1  lookup_receive_pad_v3 with our own send pad raises PadAlreadyUsedError",
         PadAlreadyUsedError,
-        lookup_receive_pad, vault.bundle_id, own_pad_id, vault, history
+        lookup_receive_pad_v3, own_pad_id, vault
     )
     if err is not None:
         check("7.2  Error has is_duplicate=True flag",
@@ -528,11 +522,10 @@ try:
 
     # A pad from the receive set should be returned normally
     recv_pad_id = pick_one_receive_pad(vault)
-    pad_bytes = lookup_receive_pad(vault.bundle_id, recv_pad_id, vault, history)
-    check("7.3  lookup_receive_pad returns PAD_SIZE bytes for a valid receive pad",
+    pad_bytes = lookup_receive_pad_v3(recv_pad_id, vault)
+    check("7.3  lookup_receive_pad_v3 returns PAD_SIZE bytes for a valid receive pad",
           len(pad_bytes) == PAD_SIZE)
 
-    history.close()
 finally:
     shutil.rmtree(d)
 
@@ -546,8 +539,6 @@ section("8 · Replay Attack & Duplicate Delivery  [SECURITY]")
 vault, salt, passphrase = make_vault()
 d = tmpdir()
 try:
-    history = make_history(d, passphrase, salt)
-
     # Get two distinct unused receive pads
     recv_pads = sorted(set(range(PAD_COUNT)) - vault.send_pads)
     recv_pad_id  = recv_pads[0]   # used for normal receive
@@ -560,89 +551,59 @@ try:
     transmission = encrypt_message(content, 1, recv_pad_id, recv_pad_bytes, bundle_id)
     msg = decrypt_message(transmission, recv_pad_bytes)
 
-    # Confirm pad used and save to history — exactly as main.py does
+    # Confirm pad used -- exactly as messages_ui does
     confirm_pad_used(recv_pad_id, vault)
-    history.save_received(
-        sequence=msg["sequence"],
-        pad_id=recv_pad_id,
-        msg_type=msg["type"],
-        content=msg["content"],
-        checksum=msg["checksum"],
-    )
 
     # Now attempt to process the same transmission again (duplicate delivery)
     err = check_raises(
         "8.1  Re-processing same pad_id raises PadAlreadyUsedError (duplicate delivery)",
         PadAlreadyUsedError,
-        lookup_receive_pad, bundle_id, recv_pad_id, vault, history
+        lookup_receive_pad_v3, recv_pad_id, vault
     )
     if err is not None:
         check("8.2  Duplicate delivery error has is_duplicate=True",
               getattr(err, "is_duplicate", False) is True)
 
-    # Replay scenario: pad marked used but NOT in history (simulates vault restored
-    # from backup after receiving but before history was saved)
-    vault.mark_used(recv_pad_id2)  # mark used but do NOT save to history
-    # history has no record of this pad_id
-
+    # Pad marked used -- must raise PadAlreadyUsedError on retry
+    vault.mark_used(recv_pad_id2)
     check_raises(
-        "8.3  Used pad not in history raises PadReplayError (backup rollback / replay)",
-        PadReplayError,
-        lookup_receive_pad, bundle_id, recv_pad_id2, vault, history
-    )
-
-    # Wrong bundle_id must be rejected
-    wrong_bundle = bundle_id ^ 0xFFFFFFFF  # guaranteed different
-    recv_pad_id3 = pick_one_receive_pad(vault)
-    check_raises(
-        "8.4  Wrong bundle_id raises UnknownBundleError",
-        UnknownBundleError,
-        lookup_receive_pad, wrong_bundle, recv_pad_id3, vault, history
+        "8.3  Used pad raises PadAlreadyUsedError",
+        PadAlreadyUsedError,
+        lookup_receive_pad_v3, recv_pad_id2, vault
     )
 
     # Out-of-range pad_id
     check_raises(
-        "8.5  pad_id == PAD_COUNT raises UnknownBundleError",
+        "8.4  pad_id == PAD_COUNT raises UnknownBundleError",
         UnknownBundleError,
-        lookup_receive_pad, bundle_id, PAD_COUNT, vault, history
+        lookup_receive_pad_v3, PAD_COUNT, vault
     )
 
-    history.close()
 finally:
     shutil.rmtree(d)
 
 # ---------------------------------------------------------------------------
-# 8.6-8.7: Ephemeral mode -- used pad with no history is duplicate, not replay
-# v1.2.9 fix: lookup_receive_pad previously raised PadReplayError in this case.
+# 8.5: Ephemeral mode -- used pad raises PadAlreadyUsedError
 # ---------------------------------------------------------------------------
 
 d = tmpdir()
 try:
-    # Build an ephemeral vault and history
     eph_vault = generate_vault(generate_bundle_id(), ephemeral=True)
-    eph_salt  = generate_salt()
-    eph_hist  = make_history(d, "eph-pass", eph_salt)
 
-    # Pick a receive pad and mark it used WITHOUT saving to history
-    # (ephemeral mode never saves history -- this is the normal case)
     eph_recv_pads = sorted(set(range(PAD_COUNT)) - eph_vault.send_pads)
     eph_pid = eph_recv_pads[0]
-    eph_vault.index[eph_pid] = True  # mark used, no history entry
+    eph_vault.index[eph_pid] = True  # mark used
 
-    # In ephemeral mode: used pad + no history = duplicate delivery.
-    # Must raise PadAlreadyUsedError with is_duplicate=True.
-    # Must NOT raise PadReplayError (that was the v1.2.9 bug).
-    err86 = check_raises(
-        "8.6  Ephemeral mode: used pad with no history raises PadAlreadyUsedError (not PadReplayError)",
+    err85 = check_raises(
+        "8.5  Ephemeral mode: used pad raises PadAlreadyUsedError",
         PadAlreadyUsedError,
-        lookup_receive_pad, eph_vault.bundle_id, eph_pid, eph_vault, eph_hist
+        lookup_receive_pad_v3, eph_pid, eph_vault
     )
-    if err86 is not None:
-        check("8.7  Ephemeral duplicate delivery error has is_duplicate=True",
-              getattr(err86, "is_duplicate", False) is True,
-              f"is_duplicate={getattr(err86, 'is_duplicate', 'missing')}")
+    if err85 is not None:
+        check("8.6  Ephemeral duplicate delivery error has is_duplicate=True",
+              getattr(err85, "is_duplicate", False) is True,
+              f"is_duplicate={getattr(err85, 'is_duplicate', 'missing')}")
 
-    eph_hist.close()
 finally:
     shutil.rmtree(d)
 
@@ -745,30 +706,25 @@ salt = generate_salt()
 
 vault_key       = derive_vault_key(passphrase, salt)
 creds_key       = derive_credentials_key(passphrase, salt)
-history_key     = derive_history_key(passphrase, salt)
 transfer_key    = derive_vault_key(passphrase, salt, is_transfer=True)
 vault_key2      = derive_vault_key(passphrase, salt)  # same call again
 
 check("10.1 vault_key != credentials_key",
       vault_key != creds_key)
-check("10.2 vault_key != history_key",
-      vault_key != history_key)
-check("10.3 credentials_key != history_key",
-      creds_key != history_key)
-check("10.4 transfer vault key != personal vault key (different iterations)",
+check("10.2 transfer vault key != personal vault key (different iterations)",
       transfer_key != vault_key)
-check("10.5 vault_key is deterministic (same passphrase+salt produces same key)",
+check("10.3 vault_key is deterministic (same passphrase+salt produces same key)",
       vault_key == vault_key2)
 
 # Different salts produce different keys even with same passphrase
 salt2 = generate_salt()
 vault_key_s2 = derive_vault_key(passphrase, salt2)
-check("10.6 Different salt produces different vault key",
+check("10.4 Different salt produces different vault key",
       vault_key != vault_key_s2)
 
 # Different passphrases produce different keys with same salt
 vault_key_p2 = derive_vault_key("different-passphrase", salt)
-check("10.7 Different passphrase produces different vault key",
+check("10.5 Different passphrase produces different vault key",
       vault_key != vault_key_p2)
 
 # Transfer vault uses 10x more iterations — verify via timing
@@ -781,7 +737,7 @@ t2 = _time.monotonic()
 personal_ms  = (t1 - t0) * 1000
 transfer_ms  = (t2 - t1) * 1000
 ratio = transfer_ms / personal_ms if personal_ms > 0 else 0
-check("10.8 Transfer vault KDF takes at least 5x longer than personal vault KDF",
+check("10.6 Transfer vault KDF takes at least 5x longer than personal vault KDF",
       ratio >= 5.0,
       f"ratio={ratio:.1f}x (personal={personal_ms:.0f}ms, transfer={transfer_ms:.0f}ms)")
 
@@ -834,74 +790,103 @@ check("11.6 All-zero MAC with random ciphertext is rejected",
 
 
 # ===========================================================================
-# SECTION 12 — History Database: Encryption, Temp File Cleanup
+# ===========================================================================
+# SECTION 12 — Wipe and Lockout  [SECURITY]
 # ===========================================================================
 
-section("12 · History Database Encryption & Temp File Cleanup  [SECURITY]")
+section("12 · Wipe and Lockout  [SECURITY]")
 
+# 12.1 — wipe_all_data removes all data files
 d = tmpdir()
 try:
-    passphrase = "history-test-pass"
-    salt = generate_salt()
+    vault, salt, passphrase = make_vault(data_dir=d)
+    cfg_path = d / "config.dat"
+    create_config(cfg_path, salt)
+    (d / "credentials.dat").write_bytes(b"fake")
+    (d / "history.db").write_bytes(b"fake")
 
-    # Write some messages
-    with MessageHistory(d, passphrase, salt) as h:
-        h.save_received(1, 101, TYPE_POST, "secret message alpha", b"cksum001")
-        h.save_sent(1, 201, TYPE_POST, "secret message beta", b"cksum002")
+    wipe_all_data(d)
 
-    # history.db must exist and temp file must be gone
-    check("12.1 Encrypted history.db exists after close",
-          (d / "history.db").exists())
-    check("12.2 Plaintext history.tmp.db is deleted after close",
-          not (d / "history.tmp.db").exists())
+    check("12.1 vault.dat deleted after wipe_all_data",
+          not (d / "vault.dat").exists())
+    check("12.2 credentials.dat deleted after wipe_all_data",
+          not (d / "credentials.dat").exists())
+    check("12.3 config.dat deleted after wipe_all_data",
+          not (d / "config.dat").exists())
+    check("12.4 history.db deleted after wipe_all_data",
+          not (d / "history.db").exists())
+finally:
+    shutil.rmtree(d)
 
-    # The on-disk file must not contain plaintext message content
-    db_bytes = (d / "history.db").read_bytes()
-    check("12.3 Plaintext message content not visible in encrypted history.db",
-          b"secret message alpha" not in db_bytes and
-          b"secret message beta"  not in db_bytes)
-
-    # NOTE: The history file uses bare XOR keystream without HMAC
-    # authentication (unlike vault and credentials). This means an
-    # attacker with write access to history.db could flip bits without
-    # detection. This is a known architectural limitation — record it.
-    has_hmac = False
-    # We detect this by checking whether _decrypt (HMAC-verified) or
-    # bare _generate_keystream/_xor is used in _encrypt_db_file
-    import inspect
-    src = inspect.getsource(MessageHistory.close)
-    has_hmac = "_encrypt(" in src  # would use vault's authenticated _encrypt
-    # The actual code uses _encrypt_db_file which calls _xor directly
-    if not has_hmac:
-        print(f"\n  {YELLOW}NOTE{RESET}  12.4 History file uses unauthenticated XOR "
-              f"(no HMAC). A tampered history.db may not be detected.")
-        # This is a known limitation, not a test failure — don't count as FAIL.
-
-    # Data survives close/reopen
-    with MessageHistory(d, passphrase, salt) as h2:
-        row = h2.get_by_pad_id(101)
-        check("12.5 Received message retrievable after close/reopen",
-              row is not None and row["content"] == "secret message alpha")
-
-        row2 = h2.get_by_pad_id(201)
-        # get_by_pad_id only searches received messages (used for duplicate detection)
-        check("12.6 get_by_pad_id returns None for sent messages (correct behaviour)",
-              row2 is None)
-
-        seq = h2.get_next_send_sequence()
-        check("12.7 Next send sequence is 2 after one sent message",
-              seq == 2, f"got {seq}")
-
-    # Wrong passphrase — decryption produces garbage that SQLite rejects
+# 12.5 — wipe_all_data is silent when files are missing (no exception)
+d = tmpdir()
+try:
     try:
-        with MessageHistory(d, "wrong-passphrase", salt) as h3:
-            h3._check_integrity()
-        check("12.8 Wrong passphrase on history raises an error",
-              False, "no error raised")
-    except Exception:
-        check("12.8 Wrong passphrase on history raises an error",
-              True)
+        wipe_all_data(d)
+        check("12.5 wipe_all_data raises no exception when files are absent", True)
+    except Exception as e:
+        check("12.5 wipe_all_data raises no exception when files are absent",
+              False, str(e))
+finally:
+    shutil.rmtree(d)
 
+# 12.6 — failed attempt counter increments correctly
+d = tmpdir()
+try:
+    salt = generate_salt()
+    cfg_path = d / "config.dat"
+    create_config(cfg_path, salt)
+
+    for i in range(1, 4):
+        record_failed_attempt(cfg_path)
+    check("12.6 failed_attempt_count returns 3 after 3 failures",
+          failed_attempt_count(cfg_path) == 3)
+finally:
+    shutil.rmtree(d)
+
+# 12.7 — failed attempts reset after successful login
+d = tmpdir()
+try:
+    salt = generate_salt()
+    cfg_path = d / "config.dat"
+    create_config(cfg_path, salt)
+
+    record_failed_attempt(cfg_path)
+    record_failed_attempt(cfg_path)
+    prev = record_successful_login(cfg_path)
+    check("12.7 record_successful_login returns previous failure count",
+          prev == 2, f"got {prev}")
+    check("12.8 failed_attempt_count resets to 0 after successful login",
+          failed_attempt_count(cfg_path) == 0)
+finally:
+    shutil.rmtree(d)
+
+# 12.9 — lockout_wait_seconds returns 0 before threshold
+d = tmpdir()
+try:
+    salt = generate_salt()
+    cfg_path = d / "config.dat"
+    create_config(cfg_path, salt)
+
+    for _ in range(5):
+        record_failed_attempt(cfg_path)
+    check("12.9 No lockout delay before attempt 6",
+          lockout_wait_seconds(cfg_path) == 0)
+finally:
+    shutil.rmtree(d)
+
+# 12.10 — lockout_wait_seconds returns positive value at attempt 6
+d = tmpdir()
+try:
+    salt = generate_salt()
+    cfg_path = d / "config.dat"
+    create_config(cfg_path, salt)
+
+    for _ in range(6):
+        record_failed_attempt(cfg_path)
+    wait = lockout_wait_seconds(cfg_path)
+    check("12.10 Lockout delay enforced at attempt 6",
+          wait > 0, f"got {wait}s")
 finally:
     shutil.rmtree(d)
 
@@ -1145,13 +1130,6 @@ try:
     check("16.2 No .tmp files remain after create_config",
           len(tmp_files2) == 0)
 
-    # History close
-    with MessageHistory(d, passphrase, salt) as h:
-        h.save_sent(1, 42, TYPE_POST, "test", b"00000000")
-    tmp_files3 = list(d.glob("*.tmp"))
-    check("16.3 No .tmp files remain after MessageHistory.close()",
-          len(tmp_files3) == 0)
-
 finally:
     shutil.rmtree(d)
 
@@ -1259,23 +1237,21 @@ section("20 · Receive Flow — Pad Confirmed Only After Successful Decryption  
 vault, salt, passphrase = make_vault()
 d = tmpdir()
 try:
-    history = make_history(d, passphrase, salt)
-
     recv_pad_id = pick_one_receive_pad(vault)
 
     # Verify the pad is unused before the test
     check("20.1 Receive pad starts unused",
           vault.index[recv_pad_id] is False)
 
-    # lookup_receive_pad returns the pad bytes (doesn't mark used)
-    pad_bytes = lookup_receive_pad(vault.bundle_id, recv_pad_id, vault, history)
+    # lookup_receive_pad_v3 returns the pad bytes (doesn't mark used)
+    pad_bytes = lookup_receive_pad_v3(recv_pad_id, vault)
 
     # Verify still unused — lookup alone must not mark it used
-    check("20.2 lookup_receive_pad does NOT mark pad used",
+    check("20.2 lookup_receive_pad_v3 does NOT mark pad used",
           vault.index[recv_pad_id] is False)
 
     # Now simulate a ChecksumError during decryption — pad must remain unused
-    # (In main.py, confirm_pad_used is only called if decrypt_message succeeds)
+    # (In messages_ui, confirm_pad_used is only called if decrypt_message succeeds)
     try:
         bad_transmission = os.urandom(TRANSMISSION_SIZE)  # random bytes, will fail checksum
         decrypt_message(bad_transmission, pad_bytes)
@@ -1297,7 +1273,6 @@ try:
     check("20.4 Legitimate receive: pad marked used after confirm_pad_used()",
           vault.index[recv_pad_id] is True)
 
-    history.close()
 finally:
     shutil.rmtree(d)
 
@@ -1534,43 +1509,30 @@ try:
     vault_s = generate_vault(generate_bundle_id(), ephemeral=True)
     save_vault(vault_s, d / "vault_s.dat", "pass", salt_s)
 
-    history = make_history(d, "pass", salt_s)
-
-    # Simulate the send flow from main.py _compose_message (ephemeral path)
+    # Simulate the send flow (ephemeral path -- no history in v3)
     pad_id_s, pad_bytes_s = reserve_send_pad(vault_s)
     save_vault(vault_s, d / "vault_s.dat", "pass", salt_s)
 
     content_s = "ephemeral send test"
-    import hashlib as _hl
-    sequence_s  = history.get_next_send_sequence()
     bundle_id_s = vault_s.bundle_id
-    transmission_s = encrypt_message(content_s, sequence_s, pad_id_s, pad_bytes_s, bundle_id_s)
-    checksum_s = _hl.sha256(content_s.encode()).digest()[:8]
+    transmission_s = encrypt_message(content_s, 1, pad_id_s, pad_bytes_s, bundle_id_s)
 
-    # Ephemeral: do NOT save to history; erase pad
-    if vault_s.ephemeral:
-        vault_s.erase_pad(pad_id_s)
-        save_vault(vault_s, d / "vault_s.dat", "pass", salt_s)
-    else:
-        history.save_sent(sequence_s, pad_id_s, TYPE_POST, content_s, checksum_s)
+    # Ephemeral: erase pad after send
+    vault_s.erase_pad(pad_id_s)
+    save_vault(vault_s, d / "vault_s.dat", "pass", salt_s)
 
-    check("22.11 Ephemeral send: message NOT saved to history",
-          history.get_next_send_sequence() == 1,  # still 1 — no sent messages recorded
-          f"sequence advanced to {history.get_next_send_sequence()}")
-
-    check("22.12 Ephemeral send: pad marked used",
+    check("22.11 Ephemeral send: pad marked used",
           vault_s.index[pad_id_s] is True)
 
     reloaded_s = load_vault(d / "vault_s.dat", "pass")
     original_pad = bytes(pad_bytes_s)
     disk_pad = reloaded_s.get_pad(pad_id_s)
-    check("22.13 Ephemeral send: pad bytes on disk are erased (differ from original)",
+    check("22.12 Ephemeral send: pad bytes on disk are erased (differ from original)",
           disk_pad != original_pad)
 
-    check("22.14 Ephemeral send: erased pad on disk is not all zeros",
+    check("22.13 Ephemeral send: erased pad on disk is not all zeros",
           disk_pad != bytes(PAD_SIZE))
 
-    history.close()
 finally:
     shutil.rmtree(d)
 
@@ -1583,9 +1545,6 @@ try:
     salt_r = generate_salt()
     vault_r = generate_vault(generate_bundle_id(), ephemeral=True)
 
-    history_r = make_history(d, "pass", salt_r)
-
-    # Pick a receive-side pad
     recv_pads_r = sorted(set(range(PAD_COUNT)) - vault_r.send_pads)
     recv_pid = recv_pads_r[0]
     recv_pad_bytes = vault_r.get_pad(recv_pid)
@@ -1595,153 +1554,28 @@ try:
     transmission_r = encrypt_message(content_r, 1, recv_pid, recv_pad_bytes, bundle_id_r)
     msg_r = decrypt_message(transmission_r, recv_pad_bytes)
 
-    # Simulate receive flow: confirm pad used, DO NOT save to history (ephemeral)
+    # Confirm pad used (v3: no history save)
     confirm_pad_used(recv_pid, vault_r)
 
-    if not vault_r.ephemeral:
-        history_r.save_received(
-            sequence=msg_r["sequence"],
-            pad_id=recv_pid,
-            msg_type=msg_r["type"],
-            content=msg_r["content"],
-            checksum=msg_r["checksum"],
-        )
-
-    check("22.15 Ephemeral receive: message NOT saved to history",
-          history_r.get_by_pad_id(recv_pid) is None)
-
-    check("22.16 Ephemeral receive: pad marked used before erasure",
+    check("22.15 Ephemeral receive: pad marked used before erasure",
           vault_r.index[recv_pid] is True)
 
-    # Simulate "Ready to delete? yes" — erase pad
     vault_r.erase_pad(recv_pid)
     save_vault(vault_r, d / "vault_r.dat", "pass", salt_r)
 
     reloaded_r = load_vault(d / "vault_r.dat", "pass")
-    check("22.17 Ephemeral receive: pad erased on disk after delete confirmation",
+    check("22.16 Ephemeral receive: pad erased on disk after delete confirmation",
           reloaded_r.get_pad(recv_pid) != bytes(recv_pad_bytes))
 
-    check("22.18 Ephemeral receive: index still shows pad as used after erasure",
+    check("22.17 Ephemeral receive: index still shows pad as used after erasure",
           reloaded_r.index[recv_pid] is True)
 
-    # Verify the erased pad cannot be used again (already marked used)
-    check("22.19 Ephemeral receive: erased pad cannot be used again (index=True)",
+    check("22.18 Ephemeral receive: erased pad cannot be used again (index=True)",
           reloaded_r.index[recv_pid] is True)
 
-    # "Ready to delete? no" path: pad stays erased-in-memory but not on disk
-    recv_pid2 = recv_pads_r[1]
-    recv_pad_bytes2 = vault_r.get_pad(recv_pid2)
-    transmission_r2 = encrypt_message("keep in session", 2, recv_pid2, recv_pad_bytes2, bundle_id_r)
-    msg_r2 = decrypt_message(transmission_r2, recv_pad_bytes2)
-    confirm_pad_used(recv_pid2, vault_r)
-
-    # No save to history, no erase (user said "no") — pad is used but NOT erased
-    in_history = history_r.get_by_pad_id(recv_pid2)
-    check("22.20 Ephemeral receive (no delete): message still not in history",
-          in_history is None)
-
-    history_r.close()
 finally:
     shutil.rmtree(d)
 
-# ---------------------------------------------------------------------------
-# 22.21: Standard vault: history IS saved normally (regression)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# 22.25-22.28: Pad erasure is unconditional — standard mode also erases
-# ---------------------------------------------------------------------------
-
-# Standard send: pad erased even though message saved to history
-d = tmpdir()
-try:
-    salt_u = generate_salt()
-    vault_u = generate_vault(generate_bundle_id(), ephemeral=False)
-    save_vault(vault_u, d / "vault_u.dat", "pass", salt_u)
-    history_u = make_history(d, "pass", salt_u)
-
-    pad_id_u, pad_bytes_u = reserve_send_pad(vault_u)
-    original_u = bytes(pad_bytes_u)
-
-    # Simulate standard send flow: erase pad then save history
-    vault_u.erase_pad(pad_id_u)
-    save_vault(vault_u, d / "vault_u.dat", "pass", salt_u)
-    import hashlib as _hl2
-    seq_u = history_u.get_next_send_sequence()
-    ck_u  = _hl2.sha256("standard send".encode()).digest()[:8]
-    history_u.save_sent(seq_u, pad_id_u, TYPE_POST, "standard send", ck_u)
-
-    reloaded_u = load_vault(d / "vault_u.dat", "pass")
-    check("22.25 Standard send: pad erased on disk",
-          reloaded_u.get_pad(pad_id_u) != original_u)
-    check("22.26 Standard send: message IS in history",
-          history_u.get_next_send_sequence() == 2)
-
-    history_u.close()
-finally:
-    shutil.rmtree(d)
-
-# Standard receive: pad erased even though message saved to history
-d = tmpdir()
-try:
-    salt_v = generate_salt()
-    vault_v = generate_vault(generate_bundle_id(), ephemeral=False)
-    history_v = make_history(d, "pass", salt_v)
-
-    recv_pads_v = sorted(set(range(PAD_COUNT)) - vault_v.send_pads)
-    rpid_v = recv_pads_v[0]
-    rpb_v  = vault_v.get_pad(rpid_v)
-    original_v = bytes(rpb_v)
-    t_v = encrypt_message("standard receive", 1, rpid_v, rpb_v, vault_v.bundle_id)
-    msg_v = decrypt_message(t_v, rpb_v)
-
-    # Simulate standard receive flow: confirm, erase, save history
-    confirm_pad_used(rpid_v, vault_v)
-    vault_v.erase_pad(rpid_v)
-    save_vault(vault_v, d / "vault_v.dat", "pass", salt_v)
-    history_v.save_received(msg_v["sequence"], rpid_v, msg_v["type"],
-                            msg_v["content"], msg_v["checksum"])
-
-    reloaded_v = load_vault(d / "vault_v.dat", "pass")
-    check("22.27 Standard receive: pad erased on disk",
-          reloaded_v.get_pad(rpid_v) != original_v)
-    check("22.28 Standard receive: message IS in history",
-          history_v.get_by_pad_id(rpid_v) is not None)
-
-    history_v.close()
-finally:
-    shutil.rmtree(d)
-
-# ---------------------------------------------------------------------------
-# (original) 22.21: Standard vault: history IS saved normally (regression)
-# ---------------------------------------------------------------------------
-
-d = tmpdir()
-try:
-    salt_st = generate_salt()
-    vault_st = generate_vault(generate_bundle_id(), ephemeral=False)
-
-    history_st = make_history(d, "pass", salt_st)
-
-    recv_pads_st = sorted(set(range(PAD_COUNT)) - vault_st.send_pads)
-    rpid = recv_pads_st[0]
-    rb   = vault_st.get_pad(rpid)
-    t_st = encrypt_message("standard receive", 1, rpid, rb, vault_st.bundle_id)
-    m_st = decrypt_message(t_st, rb)
-    confirm_pad_used(rpid, vault_st)
-    history_st.save_received(m_st["sequence"], rpid, m_st["type"],
-                              m_st["content"], m_st["checksum"])
-    row = history_st.get_by_pad_id(rpid)
-    check("22.21 Standard vault (regression): received message IS saved to history",
-          row is not None and row["content"] == "standard receive")
-
-    history_st.close()
-finally:
-    shutil.rmtree(d)
-
-# ---------------------------------------------------------------------------
-# 22.22: VAULT_FLAG_EPHEMERAL bitmask value is as specified
-# ---------------------------------------------------------------------------
 check("22.22 VAULT_FLAG_EPHEMERAL constant is 0x0001",
       VAULT_FLAG_EPHEMERAL == 0x0001)
 

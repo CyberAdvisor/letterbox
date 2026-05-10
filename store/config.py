@@ -238,6 +238,43 @@ def record_failed_attempt(path: Path) -> int:
     return config.failed_attempts
 
 
+def failed_attempt_count(path: Path) -> int:
+    """
+    Return the current failed attempt count without modifying anything.
+    Returns 0 if config does not exist.
+    """
+    try:
+        return read_config(path).failed_attempts
+    except Exception:
+        return 0
+
+
+def lockout_wait_seconds(path: Path) -> int:
+    """
+    Return the number of seconds the caller must wait before accepting
+    another passphrase attempt, based on the last failed attempt timestamp
+    and the LOCKOUT_DELAYS schedule.
+
+    Returns 0 if no wait is required.
+    """
+    import time
+    from core.constants import LOCKOUT_DELAYS
+
+    try:
+        config = read_config(path)
+    except Exception:
+        return 0
+
+    attempts = config.failed_attempts
+    delay    = LOCKOUT_DELAYS.get(attempts, 0)
+
+    if not delay:
+        return 0
+
+    elapsed  = int(time.time()) - config.last_failed_ts
+    return max(0, delay - elapsed)
+
+
 def record_successful_login(path: Path) -> int:
     """
     Record a successful login.

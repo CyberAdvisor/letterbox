@@ -18,6 +18,26 @@
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
+# DURESS PASSPHRASE
+# ---------------------------------------------------------------------------
+# If set to a non-empty string, entering this passphrase at any unlock
+# prompt silently wipes all vault data and credentials and resets the
+# app to factory state. The response is "Wrong passphrase." --
+# indistinguishable from a normal failed entry.
+#
+# To enable: replace None with a string, e.g.:
+#   DURESS_PASSPHRASE = "abandon ship"
+#
+# To disable: set to None (default).
+#
+# Rules:
+#   - Must differ from your real passphrase
+#   - Stored in plaintext in this file
+#   - Do not reuse any passphrase used elsewhere
+# ---------------------------------------------------------------------------
+DURESS_PASSPHRASE = None
+
+# ---------------------------------------------------------------------------
 # Pad parameters
 # ---------------------------------------------------------------------------
 
@@ -144,7 +164,7 @@ KDF_KEY_SIZE            = 32       # 256-bit key
 # failed attempt tracking. No sensitive data.
 # ---------------------------------------------------------------------------
 
-APP_VERSION             = '3.2.0'
+APP_VERSION          = '3.3.0'
 
 DISCLAIMER_TEXT = (
     "This project is an experimental proof of concept and is provided "
@@ -162,6 +182,21 @@ DISCLAIMER_TEXT = (
 CONFIG_VERSION          = 1
 CONFIG_SALT_SIZE        = VAULT_SALT_SIZE
 MAX_PASSPHRASE_ATTEMPTS = 10
+
+# ---------------------------------------------------------------------------
+# FAILED ATTEMPT LOCKOUT DELAYS
+# ---------------------------------------------------------------------------
+# Minimum seconds to wait after a failed attempt before the next attempt
+# is accepted. Keyed by attempt number (1-indexed). Attempts not listed
+# have no enforced delay. Survives quit-and-restart via config.dat timestamp.
+# ---------------------------------------------------------------------------
+LOCKOUT_DELAYS = {
+    6:  30,       # 30 seconds
+    7:  60,       # 1 minute
+    8:  300,      # 5 minutes
+    9:  1800,     # 30 minutes
+    10: None,     # wipe -- no delay, handled separately
+}
 
 # History display
 HISTORY_PAGE_SIZE       = 5    # messages per page in history view

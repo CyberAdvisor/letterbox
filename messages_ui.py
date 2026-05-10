@@ -16,6 +16,7 @@ from store.credentials import (
 from store.vault import load_vault, save_vault
 from store.config import (
     read_config,
+    record_successful_login,
     get_vault_sequence,
     update_vault_sequence,
     get_recv_sequence,
@@ -132,6 +133,13 @@ def run(data_dir: Path, ui) -> None:
 
 def _unlock(vault_path, creds_path, config_path, ui):
     """Unlock vault and credentials. Returns (passphrase, salt, vault, creds) or Nones."""
+    import time
+    from core.constants import DURESS_PASSPHRASE, MAX_PASSPHRASE_ATTEMPTS
+    from store.config import (
+        record_failed_attempt, failed_attempt_count, lockout_wait_seconds
+    )
+    from store.wipe import wipe_all_data
+
     config = read_config(config_path)
     salt   = config.salt
 
@@ -150,15 +158,47 @@ def _unlock(vault_path, creds_path, config_path, ui):
     while True:
         passphrase = ui.enter_passphrase("Enter vault passphrase")
         print()
+
+        # Duress check -- fires instantly, before any delay or KDF work
+        if DURESS_PASSPHRASE and passphrase == DURESS_PASSPHRASE:
+            wipe_all_data(config_path.parent)
+            print("  Wrong passphrase.")
+            return None, None, None, None
+
+        # Lockout guard -- in case config was restored from backup
+        if failed_attempt_count(config_path) >= MAX_PASSPHRASE_ATTEMPTS:
+            wipe_all_data(config_path.parent)
+            print("  Wrong passphrase.")
+            return None, None, None, None
+
+        # Enforce lockout delay before proceeding to KDF
+        wait = lockout_wait_seconds(config_path)
+        if wait > 0:
+            if wait >= 60:
+                wait_str = f"{wait // 60}m {wait % 60}s" if wait % 60 else f"{wait // 60}m"
+            else:
+                wait_str = f"{wait}s"
+            print(f"  Too many failed attempts. Wait {wait_str} before retrying.")
+            print()
+            time.sleep(wait)
+
         print("  Decrypting vault...")
         print("  Verifying integrity...")
 
         try:
             vault = load_vault(vault_path, passphrase)
         except WrongPassphraseError:
-            print()
-            print("  ERROR:")
-            print("  Vault decryption failed.")
+            count = record_failed_attempt(config_path)
+            if count >= MAX_PASSPHRASE_ATTEMPTS:
+                wipe_all_data(config_path.parent)
+                print()
+                print("  Wrong passphrase.")
+            else:
+                remaining = MAX_PASSPHRASE_ATTEMPTS - count
+                print()
+                print("  Wrong passphrase.")
+                if remaining <= 2:
+                    print(f"  WARNING: {remaining} attempt(s) remaining before data wipe.")
             print("  Press Enter to retry, or type q to quit.")
             if input("  > ").strip().lower() == "q":
                 return None, None, None, None
@@ -173,6 +213,7 @@ def _unlock(vault_path, creds_path, config_path, ui):
             print(f"\n  ERROR loading credentials: {e}")
             return None, None, None, None
 
+        record_successful_login(config_path)
         session_store.set(passphrase, salt, credentials)
         print("  Vault unlocked.")
         return passphrase, salt, vault, credentials

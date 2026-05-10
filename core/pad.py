@@ -297,10 +297,10 @@ def lookup_receive_pad_v3(
         vault:  the VaultData for this contact
 
     Returns:
-        pad bytes if the pad is unused.
+        pad bytes if the pad is unused and is a receive pad.
 
     Raises:
-        PadAlreadyUsedError if pad already used
+        PadAlreadyUsedError if pad already used or is a send pad
         UnknownBundleError  if pad_id out of range
     """
     from core.exceptions import UnknownBundleError
@@ -309,6 +309,15 @@ def lookup_receive_pad_v3(
         raise UnknownBundleError(
             f"Pad ID {pad_id} is out of range."
         )
+
+    # Reject our own send pads -- a message using one of our send pads
+    # is either our own message reflected back or a crafted attack.
+    if pad_id in vault.send_pads:
+        err = PadAlreadyUsedError(
+            f"Pad {pad_id} is a send pad -- cannot receive with it."
+        )
+        err.is_duplicate = True
+        raise err
 
     if vault.index[pad_id]:
         err = PadAlreadyUsedError(

@@ -56,8 +56,24 @@ The config file maintains a send sequence counter. On each launch, the counter i
 | Pad reuse | Pad erased immediately after use |
 | Vault restore from backup | Rollback detection via sequence counter |
 | Subject line metadata | HMAC obfuscation of pad ID |
+| Brute force unlock attempts | Escalating delays; wipe after 10 failures |
+| Coerced unlock | Optional duress passphrase triggers silent wipe |
 
 For the full threat model see [THREAT_MODEL.md](THREAT_MODEL.md).
+
+---
+
+## Brute Force Protection
+
+Failed passphrase attempts trigger escalating delays enforced before the next attempt is accepted. The delay is based on the timestamp of the last failure stored in `config.dat` — it survives quit-and-restart.
+
+After 10 consecutive failures all data is wiped: `vault.dat`, `credentials.dat`, `history.db`, and `config.dat` are each overwritten with 3 passes of random data before deletion. The wipe response is "Wrong passphrase." — identical to any other failure.
+
+---
+
+## Duress Passphrase
+
+An optional duress passphrase can be set in `core/constants.py`. Entering it at any unlock prompt silently wipes all data and returns "Wrong passphrase." — indistinguishable from a normal failed entry. The check fires before any delay or KDF work so it responds instantly regardless of the current lockout state.
 
 ---
 

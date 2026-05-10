@@ -21,6 +21,9 @@ from store.config import (
     write_config,
     config_exists,
     record_disclaimer_agreed,
+    record_successful_login,
+    record_failed_attempt,
+    failed_attempt_count,
 )
 
 
@@ -134,6 +137,11 @@ def _unlock(creds_path, config_path, ui):
     Load credentials using session passphrase if available, else prompt.
     Returns (passphrase, salt, credentials) or (None, None, None).
     """
+    import time
+    from core.constants import DURESS_PASSPHRASE, MAX_PASSPHRASE_ATTEMPTS
+    from store.config import lockout_wait_seconds
+    from store.wipe import wipe_all_data
+
     config = read_config(config_path)
     salt   = config.salt
 
@@ -148,13 +156,48 @@ def _unlock(creds_path, config_path, ui):
     while True:
         passphrase = ui.enter_passphrase("Enter passphrase")
 
+        # Duress check -- fires instantly, before any delay or KDF work
+        if DURESS_PASSPHRASE and passphrase == DURESS_PASSPHRASE:
+            wipe_all_data(config_path.parent)
+            print()
+            print("  Wrong passphrase.")
+            return None, None, None
+
+        # Lockout guard
+        if failed_attempt_count(config_path) >= MAX_PASSPHRASE_ATTEMPTS:
+            wipe_all_data(config_path.parent)
+            print()
+            print("  Wrong passphrase.")
+            return None, None, None
+
+        # Enforce lockout delay before proceeding to KDF
+        wait = lockout_wait_seconds(config_path)
+        if wait > 0:
+            if wait >= 60:
+                wait_str = f"{wait // 60}m {wait % 60}s" if wait % 60 else f"{wait // 60}m"
+            else:
+                wait_str = f"{wait}s"
+            print(f"  Too many failed attempts. Wait {wait_str} before retrying.")
+            print()
+            time.sleep(wait)
+
         try:
             credentials = load_credentials(creds_path, passphrase, salt)
+            record_successful_login(config_path)
             session_store.set(passphrase, salt, credentials)
             return passphrase, salt, credentials
         except WrongPassphraseError:
-            print()
-            print("  Incorrect passphrase.")
+            count = record_failed_attempt(config_path)
+            if count >= MAX_PASSPHRASE_ATTEMPTS:
+                wipe_all_data(config_path.parent)
+                print()
+                print("  Wrong passphrase.")
+            else:
+                remaining = MAX_PASSPHRASE_ATTEMPTS - count
+                print()
+                print("  Wrong passphrase.")
+                if remaining <= 2:
+                    print(f"  WARNING: {remaining} attempt(s) remaining before data wipe.")
             print("  Press Enter to retry, or type q to quit.")
             if input("  > ").strip().lower() == "q":
                 return None, None, None
